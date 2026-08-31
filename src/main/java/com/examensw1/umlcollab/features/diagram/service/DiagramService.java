@@ -1,9 +1,9 @@
-package com.examensw1.umlcollab.features.platos.service;
+package com.examensw1.umlcollab.features.diagram.service;
 
 import com.examensw1.umlcollab.common.exception.ResourceNotFoundException;
-import com.examensw1.umlcollab.features.platos.dto.*;
-import com.examensw1.umlcollab.features.platos.model.*;
-import com.examensw1.umlcollab.features.platos.repository.*;
+import com.examensw1.umlcollab.features.diagram.dto.*;
+import com.examensw1.umlcollab.features.diagram.model.*;
+import com.examensw1.umlcollab.features.diagram.repository.*;
 import com.examensw1.umlcollab.features.project.service.ProjectService;
 import java.util.List;
 import java.util.UUID;

@@ -1,4 +1,4 @@
-package com.examensw1.umlcollab.features.platos.model;
+package com.examensw1.umlcollab.features.diagram.model;
 
 import jakarta.persistence.*;
 import java.time.Instant;

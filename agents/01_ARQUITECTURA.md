@@ -4,7 +4,7 @@ El backend usa arquitectura por funcionalidad. Cada funcionalidad mantiene sus c
 
 ```text
 features/
-└── platos/
+└── diagram/
     ├── controller/   # entrada HTTP o WebSocket
     ├── dto/          # solicitudes y respuestas públicas
     ├── model/        # entidades JPA y enumeraciones
@@ -39,6 +39,6 @@ service → dto, model, repository
 
 No invertir esta dirección ni saltar capas.
 
-## Nota sobre `platos`
+## Módulo de diagramas
 
-La carpeta `features/platos` se mantiene por petición explícita de la usuaria. Sus clases internas actuales representan el dominio UML. No cambiar nombres, rutas REST ni esquema de datos por esa diferencia sin una instrucción explícita.
+La carpeta `features/diagram` contiene el dominio UML: diagramas, clases, atributos y relaciones.

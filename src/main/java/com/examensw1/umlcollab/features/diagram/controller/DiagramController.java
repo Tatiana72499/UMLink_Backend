@@ -1,7 +1,7 @@
-package com.examensw1.umlcollab.features.platos.controller;
+package com.examensw1.umlcollab.features.diagram.controller;
 
-import com.examensw1.umlcollab.features.platos.dto.*;
-import com.examensw1.umlcollab.features.platos.service.DiagramService;
+import com.examensw1.umlcollab.features.diagram.dto.*;
+import com.examensw1.umlcollab.features.diagram.service.DiagramService;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;

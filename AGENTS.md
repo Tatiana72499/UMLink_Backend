@@ -32,8 +32,7 @@ Antes de modificar código, leer los documentos en `agents/` en este orden:
 - Puerto HTTP: `8080`.
 - Raíz de arquitectura: `src/main/java/com/examensw1/umlcollab/`.
 - Las funcionalidades usan la estructura `controller`, `dto`, `model`, `repository` y `service`.
-- El nombre literal requerido del módulo principal es `features/platos/`.
-- Ese módulo todavía contiene el modelo de diagramas UML; no convertirlo en dominio de restaurante ni renombrar sus clases sin una orden explícita de la usuaria.
+- El módulo principal del dominio UML es `features/diagram/`.
 
 ## Reglas no negociables
 

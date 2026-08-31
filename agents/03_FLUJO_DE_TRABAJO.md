@@ -24,8 +24,8 @@ Pedir confirmación antes de:
 ## Convenciones de commits sugeridas
 
 ```text
-feat(platos): agrega creación de clases UML
-fix(platos): valida clases dentro del diagrama
-test(platos): cubre creación de relaciones
+feat(diagram): agrega creación de clases UML
+fix(diagram): valida clases dentro del diagrama
+test(diagram): cubre creación de relaciones
 docs: actualiza instrucciones de arquitectura
 ```

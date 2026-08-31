@@ -20,9 +20,9 @@ No trabajar directamente sobre `main`.
 Usar mensajes claros:
 
 ```text
-feat(platos): agrega creación de clase UML
-fix(platos): valida relación entre clases del diagrama
-test(platos): cubre error al crear atributo
+feat(diagram): agrega creación de clase UML
+fix(diagram): valida relación entre clases del diagrama
+test(diagram): cubre error al crear atributo
 docs: actualiza estrategia de pruebas
 ```
 
