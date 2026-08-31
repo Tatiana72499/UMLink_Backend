@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: uml-collab-postgres
+    environment:
+      POSTGRES_DB: uml_collab
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - uml_collab_data:/var/lib/postgresql/data
+
+volumes:
+  uml_collab_data:
