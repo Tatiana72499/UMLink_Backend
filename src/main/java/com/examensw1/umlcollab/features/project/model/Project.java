@@ -13,6 +13,8 @@ public class Project {
     @Column(nullable = false, length = 120) private String name;
     @Column(length = 500) private String description;
     @Column(name = "owner_name", nullable = false, length = 120) private String ownerName;
+    @Column(name = "owner_id") private UUID ownerId;
+    @Version private Long version;
     @Column(name = "created_at", nullable = false, updatable = false) private Instant createdAt;
     @PrePersist void created() { createdAt = Instant.now(); }
 }

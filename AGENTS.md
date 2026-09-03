@@ -57,7 +57,7 @@ Antes de modificar código, leer los documentos en `agents/` en este orden:
 mvn test
 ```
 
-6. Informar qué cambió, cómo se verificó y cualquier limitación pendiente.
+6. Informar qué cambió, cómo se verificó y cualquier limitación pendiente. Si falta una decisión funcional o técnica en los documentos, detenerse y pedir dirección; no improvisar.
 
 ## Comandos locales
 

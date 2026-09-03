@@ -8,18 +8,25 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.validation.annotation.Validated;
 
-@RestController @RequestMapping("/api") @RequiredArgsConstructor
+@RestController @Validated @RequestMapping("/api") @RequiredArgsConstructor
 public class DiagramController {
     private final DiagramService service;
     @PostMapping("/projects/{projectId}/diagrams") @ResponseStatus(HttpStatus.CREATED) public DiagramResponse createDiagram(@PathVariable UUID projectId, @Valid @RequestBody CreateDiagramRequest request) { return service.createDiagram(projectId, request); }
     @GetMapping("/projects/{projectId}/diagrams") public List<DiagramResponse> listDiagrams(@PathVariable UUID projectId) { return service.findByProject(projectId); }
     @GetMapping("/diagrams/{diagramId}") public DiagramDetailsResponse getDiagram(@PathVariable UUID diagramId) { return service.getDetails(diagramId); }
+    @PutMapping("/diagrams/{diagramId}") public DiagramResponse updateDiagram(@PathVariable UUID diagramId, @Valid @RequestBody UpdateDiagramRequest request) { return service.updateDiagram(diagramId, request); }
+    @DeleteMapping("/diagrams/{diagramId}") @ResponseStatus(HttpStatus.NO_CONTENT) public void deleteDiagram(@PathVariable UUID diagramId, @RequestParam @jakarta.validation.constraints.Min(0) Long version) { service.deleteDiagram(diagramId, version); }
     @PostMapping("/diagrams/{diagramId}/classes") @ResponseStatus(HttpStatus.CREATED) public UmlClassResponse createClass(@PathVariable UUID diagramId, @Valid @RequestBody CreateUmlClassRequest request) { return service.createClass(diagramId, request); }
     @PutMapping("/classes/{id}") public UmlClassResponse updateClass(@PathVariable UUID id, @Valid @RequestBody UpdateUmlClassRequest request) { return service.updateClass(id, request); }
     @DeleteMapping("/classes/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void deleteClass(@PathVariable UUID id) { service.deleteClass(id); }
     @PostMapping("/classes/{classId}/attributes") @ResponseStatus(HttpStatus.CREATED) public UmlAttributeResponse createAttribute(@PathVariable UUID classId, @Valid @RequestBody CreateAttributeRequest request) { return service.createAttribute(classId, request); }
+    @PutMapping("/attributes/{id}") public UmlAttributeResponse updateAttribute(@PathVariable UUID id, @Valid @RequestBody UpdateAttributeRequest request) { return service.updateAttribute(id, request); }
     @DeleteMapping("/attributes/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void deleteAttribute(@PathVariable UUID id) { service.deleteAttribute(id); }
     @PostMapping("/diagrams/{diagramId}/relations") @ResponseStatus(HttpStatus.CREATED) public UmlRelationResponse createRelation(@PathVariable UUID diagramId, @Valid @RequestBody CreateRelationRequest request) { return service.createRelation(diagramId, request); }
+    @PostMapping("/diagrams/{diagramId}/association-classes") @ResponseStatus(HttpStatus.CREATED) public AssociationClassResponse createAssociationClass(@PathVariable UUID diagramId, @Valid @RequestBody CreateAssociationClassRequest request) { return service.createAssociationClass(diagramId, request); }
+    @PutMapping("/relations/{id}") public UmlRelationResponse updateRelation(@PathVariable UUID id, @Valid @RequestBody UpdateRelationRequest request) { return service.updateRelation(id, request); }
+    @PutMapping("/relations/{id}/cardinality") public UmlRelationResponse updateRelationCardinality(@PathVariable UUID id, @Valid @RequestBody UpdateRelationCardinalityRequest request) { return service.updateRelationCardinality(id, request); }
     @DeleteMapping("/relations/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void deleteRelation(@PathVariable UUID id) { service.deleteRelation(id); }
 }

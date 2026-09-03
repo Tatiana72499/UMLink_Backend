@@ -9,7 +9,8 @@
 5. Agregar validaciones, manejo de errores y logs relevantes.
 6. Crear una migración Flyway si cambia el esquema.
 7. Ejecutar `mvn test`.
-8. Informar los archivos cambiados, comportamiento y verificación realizada.
+8. Marcar con `[x]` en `agents/05_ROADMAP.md` cada tarea que haya quedado realmente terminada y probada. No marcar tareas parciales.
+9. Informar los archivos cambiados, comportamiento y verificación realizada.
 
 ## Operaciones de riesgo
 

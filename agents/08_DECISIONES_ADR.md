@@ -30,6 +30,13 @@ Las decisiones significativas deben registrarse aquí. Una ADR no tiene que ser 
 - **Motivo:** es verificable, segura y alcanzable en el tiempo disponible.
 - **Consecuencia:** la IA no escribe directamente a la base de datos ni genera el diagrama completo.
 
+## ADR-005 — Concurrencia optimista en proyectos y diagramas
+
+- **Estado:** aceptada.
+- **Decisión:** las actualizaciones y eliminaciones de proyectos y diagramas requieren la versión conocida por el cliente; las versiones no coincidentes responden `409 VERSION_CONFLICT`.
+- **Motivo:** evita sobrescrituras silenciosas y prepara el flujo colaborativo sin introducir bloqueos pesados.
+- **Consecuencia:** el frontend debe conservar y enviar la versión recibida; ante conflicto debe recargar el recurso.
+
 ## Plantilla para futuras ADR
 
 ```text
