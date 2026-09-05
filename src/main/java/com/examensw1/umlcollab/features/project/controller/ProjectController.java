@@ -3,6 +3,7 @@ package com.examensw1.umlcollab.features.project.controller;
 import com.examensw1.umlcollab.features.project.dto.CreateProjectRequest;
 import com.examensw1.umlcollab.features.project.dto.ProjectResponse;
 import com.examensw1.umlcollab.features.project.dto.UpdateProjectRequest;
+import com.examensw1.umlcollab.features.project.dto.*;
 import com.examensw1.umlcollab.features.project.service.ProjectService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -23,4 +24,10 @@ public class ProjectController {
     public ProjectResponse update(@PathVariable UUID id, @Valid @RequestBody UpdateProjectRequest request) { return service.update(id, request); }
     @DeleteMapping("/{id}") @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID id, @RequestParam @jakarta.validation.constraints.Min(0) Long version) { service.delete(id, version); }
+    @GetMapping("/{id}/members") public List<ProjectMemberResponse> members(@PathVariable UUID id) { return service.members(id); }
+    @PostMapping("/{id}/members") @ResponseStatus(HttpStatus.CREATED)
+    public ProjectMemberResponse addMember(@PathVariable UUID id, @Valid @RequestBody AddProjectMemberRequest request) { return service.addMember(id, request); }
+    @PutMapping("/{id}/members/{memberId}") public ProjectMemberResponse updateMember(@PathVariable UUID id, @PathVariable UUID memberId, @Valid @RequestBody UpdateProjectMemberRequest request) { return service.updateMember(id, memberId, request); }
+    @DeleteMapping("/{id}/members/{memberId}") @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void removeMember(@PathVariable UUID id, @PathVariable UUID memberId) { service.removeMember(id, memberId); }
 }

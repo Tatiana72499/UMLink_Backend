@@ -4,9 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.examensw1.umlcollab.features.diagram.dto.CreateRelationRequest;
+import com.examensw1.umlcollab.features.diagram.dto.CreateDiagramDrawingRequest;
+import com.examensw1.umlcollab.features.diagram.dto.DiagramDrawingResponse;
 import com.examensw1.umlcollab.features.diagram.dto.CreateAssociationClassRequest;
 import com.examensw1.umlcollab.features.diagram.dto.AssociationClassResponse;
 import com.examensw1.umlcollab.features.diagram.dto.UmlRelationResponse;
@@ -14,16 +17,27 @@ import com.examensw1.umlcollab.features.diagram.dto.UpdateRelationCardinalityReq
 import com.examensw1.umlcollab.features.diagram.dto.UpdateRelationRequest;
 import com.examensw1.umlcollab.features.diagram.dto.UpdateDiagramRequest;
 import com.examensw1.umlcollab.features.diagram.dto.RelationAlignmentPoint;
+import com.examensw1.umlcollab.features.diagram.dto.CreateUmlOperationRequest;
+import com.examensw1.umlcollab.features.diagram.dto.UmlOperationParameterRequest;
+import com.examensw1.umlcollab.features.diagram.dto.UmlOperationResponse;
+import com.examensw1.umlcollab.features.diagram.dto.UpdateUmlOperationRequest;
+import com.examensw1.umlcollab.features.diagram.model.AttributeDataType;
+import com.examensw1.umlcollab.features.diagram.model.OperationReturnType;
+import com.examensw1.umlcollab.features.diagram.model.UmlOperation;
 import com.examensw1.umlcollab.features.diagram.model.Diagram;
 import com.examensw1.umlcollab.features.diagram.model.RelationType;
 import com.examensw1.umlcollab.features.diagram.model.UmlClass;
 import com.examensw1.umlcollab.features.diagram.model.UmlRelation;
 import com.examensw1.umlcollab.features.diagram.repository.DiagramRepository;
+import com.examensw1.umlcollab.features.diagram.repository.DiagramDrawingRepository;
 import com.examensw1.umlcollab.features.diagram.repository.UmlAttributeRepository;
 import com.examensw1.umlcollab.features.diagram.repository.UmlClassRepository;
 import com.examensw1.umlcollab.features.diagram.repository.UmlRelationRepository;
+import com.examensw1.umlcollab.features.diagram.repository.UmlOperationRepository;
+import com.examensw1.umlcollab.features.diagram.repository.UmlOperationParameterRepository;
 import com.examensw1.umlcollab.common.exception.VersionConflictException;
 import com.examensw1.umlcollab.features.project.service.ProjectService;
+import com.examensw1.umlcollab.features.collaboration.service.CollaborationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Optional;
 import java.util.List;
@@ -43,7 +57,11 @@ class DiagramServiceTest {
     @Mock private DiagramRepository diagrams;
     @Mock private UmlClassRepository classes;
     @Mock private UmlAttributeRepository attributes;
+    @Mock private UmlOperationRepository operations;
+    @Mock private UmlOperationParameterRepository operationParameters;
     @Mock private UmlRelationRepository relations;
+    @Mock private DiagramDrawingRepository drawings;
+    @Mock private CollaborationService collaborationService;
     @Spy private ObjectMapper objectMapper = new ObjectMapper();
     @InjectMocks private DiagramService service;
 
@@ -56,6 +74,8 @@ class DiagramServiceTest {
         Diagram diagram = new Diagram();
         diagram.setId(diagramId);
         when(diagrams.findById(diagramId)).thenReturn(Optional.of(diagram));
+        org.mockito.Mockito.lenient().when(attributes.findByUmlClassId(org.mockito.ArgumentMatchers.any())).thenReturn(List.of());
+        org.mockito.Mockito.lenient().when(operations.findByUmlClassId(org.mockito.ArgumentMatchers.any())).thenReturn(List.of());
     }
 
     private void stubClassesInDiagram() {
@@ -72,6 +92,7 @@ class DiagramServiceTest {
 
         assertEquals("1..1", response.sourceCardinality());
         assertEquals("1..*", response.targetCardinality());
+        verify(collaborationService).publishDiagramChanged(diagramId, "creó una relación");
     }
 
     @Test
@@ -138,6 +159,18 @@ class DiagramServiceTest {
 
         assertEquals(RelationType.DEPENDENCY, response.type());
         assertNull(response.sourceCardinality());
+    }
+
+    @Test
+    void debePermitirRelacionRecursivaEnLaMismaClase() {
+        when(classes.findById(sourceClassId)).thenReturn(Optional.of(umlClass(sourceClassId)));
+        when(relations.save(any(UmlRelation.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        UmlRelationResponse response = service.createRelation(diagramId,
+                new CreateRelationRequest(sourceClassId, sourceClassId, RelationType.ASSOCIATION, "supervisa", "1..1", "1..*"));
+
+        assertEquals(sourceClassId, response.sourceClassId());
+        assertEquals(sourceClassId, response.targetClassId());
     }
 
     @Test
@@ -219,6 +252,56 @@ class DiagramServiceTest {
 
         assertThrows(VersionConflictException.class,
                 () -> service.updateDiagram(diagramId, new UpdateDiagramRequest("Dominio", 1L)));
+    }
+
+    @Test
+    void debePersistirUnTrazoYNotificarColaboracion() {
+        when(drawings.save(any())).thenAnswer(invocation -> {
+            var drawing = invocation.getArgument(0, com.examensw1.umlcollab.features.diagram.model.DiagramDrawing.class);
+            drawing.setId(UUID.randomUUID());
+            return drawing;
+        });
+
+        DiagramDrawingResponse response = service.createDrawing(diagramId,
+                new CreateDiagramDrawingRequest("M 10 20 L 30 40"));
+
+        assertEquals("M 10 20 L 30 40", response.svgPath());
+        verify(collaborationService).publishDiagramChanged(diagramId, "agregó un trazo");
+    }
+
+    @Test
+    void debeCrearOperacionConParametrosOrdenados() {
+        when(classes.findById(sourceClassId)).thenReturn(Optional.of(umlClass(sourceClassId)));
+        when(operations.save(any(UmlOperation.class))).thenAnswer(invocation -> {
+            UmlOperation operation = invocation.getArgument(0);
+            operation.setId(UUID.randomUUID());
+            return operation;
+        });
+        when(operationParameters.findByUmlOperationIdOrderByParameterOrderAsc(any())).thenReturn(List.of());
+
+        UmlOperationResponse response = service.createOperation(sourceClassId,
+                new CreateUmlOperationRequest("registrar", "PUBLIC", OperationReturnType.VOID,
+                        List.of(new UmlOperationParameterRequest("correo", AttributeDataType.STRING))));
+
+        assertEquals("registrar", response.name());
+        assertEquals("void", response.returnType());
+        verify(collaborationService).publishDiagramChanged(diagramId, "agregó una operación");
+    }
+
+    @Test
+    void debeRechazarParametrosRepetidosAlActualizarOperacion() {
+        UUID operationId = UUID.randomUUID();
+        UmlOperation operation = new UmlOperation();
+        operation.setId(operationId);
+        operation.setUmlClassId(sourceClassId);
+        when(operations.findById(operationId)).thenReturn(Optional.of(operation));
+        when(classes.findById(sourceClassId)).thenReturn(Optional.of(umlClass(sourceClassId)));
+
+        assertThrows(IllegalArgumentException.class, () -> service.updateOperation(operationId,
+                new UpdateUmlOperationRequest("registrar", "PUBLIC", OperationReturnType.VOID,
+                        List.of(
+                                new UmlOperationParameterRequest("correo", AttributeDataType.STRING),
+                                new UmlOperationParameterRequest("correo", AttributeDataType.STRING)))));
     }
 
     private UmlClass umlClass(UUID id) {

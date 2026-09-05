@@ -14,6 +14,8 @@ import com.examensw1.umlcollab.config.CorsConfig;
 import com.examensw1.umlcollab.common.exception.VersionConflictException;
 import com.examensw1.umlcollab.features.auth.service.AuthService;
 import com.examensw1.umlcollab.features.project.dto.ProjectResponse;
+import com.examensw1.umlcollab.features.project.dto.ProjectMemberResponse;
+import com.examensw1.umlcollab.features.project.model.ProjectRole;
 import com.examensw1.umlcollab.features.project.service.ProjectService;
 import java.time.Instant;
 import java.util.List;
@@ -97,5 +99,27 @@ class ProjectControllerTest {
                         .content("{\"name\":\"Biblioteca\",\"description\":\"Modelo\",\"version\":0}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("VERSION_CONFLICT"));
+    }
+
+    @Test
+    void debeListarMiembrosDelProyecto() throws Exception {
+        UUID projectId = UUID.randomUUID();
+        ProjectMemberResponse member = new ProjectMemberResponse(UUID.randomUUID(), UUID.randomUUID(), "Tatiana",
+                "tatiana@umlink.dev", ProjectRole.OWNER);
+        when(projectService.members(projectId)).thenReturn(List.of(member));
+
+        mockMvc.perform(get("/api/projects/{id}/members", projectId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].role").value("OWNER"));
+    }
+
+    @Test
+    void debeValidarElCorreoAlInvitarMiembro() throws Exception {
+        mockMvc.perform(post("/api/projects/{id}/members", UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"\",\"role\":\"EDITOR\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.fieldErrors.email").exists());
     }
 }

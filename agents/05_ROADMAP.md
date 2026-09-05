@@ -30,10 +30,12 @@ Los checks reflejan únicamente elementos comprobados en el código actual.
 **Estado: iniciada solo a nivel de transporte.**
 
 - [x] Configuración STOMP y retransmisión genérica de un evento.
-- [ ] Persistir eventos de diagrama.
-- [ ] Difundir cambios por cada diagrama, no por un tópico global.
-- [ ] Implementar control de versiones y respuesta `409 Conflict`.
-- [ ] Agregar miembros de proyecto y roles.
+- [x] Persistir eventos de diagrama: historial de las 50 mutaciones más recientes, con actor, acción y fecha.
+- [x] Difundir cambios por cada diagrama, no por un tópico global.
+- [x] Implementar control de versiones y respuesta `409 Conflict`.
+- [x] Agregar miembros de proyecto y roles (`OWNER`, `EDITOR`, `VIEWER`) con autorización REST y WebSocket.
+- [x] Persistir y difundir trazos de lápiz por diagrama para los miembros con permiso de edición.
+- [x] Previsualizar trazos, resaltar clases arrastradas y comunicar actividad remota contextual mediante eventos WebSocket efímeros autorizados.
 
 ## Autenticación — base para pruebas locales
 
@@ -43,6 +45,7 @@ Los checks reflejan únicamente elementos comprobados en el código actual.
 ## Fase 3 — Interoperabilidad e IA
 
 - [ ] Importar/exportar un subconjunto documentado de XML UML.
+- [ ] Compartir un archivo XMI UML interoperable, validado inicialmente contra Enterprise Architect u otro editor compatible con la versión XMI acordada.
 - [ ] Definir comandos estructurados: crear clase, atributo, relación, eliminar y mover.
 - [ ] Validar y ejecutar comandos IA mediante services existentes.
 

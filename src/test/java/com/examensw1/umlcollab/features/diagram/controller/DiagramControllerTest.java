@@ -17,6 +17,7 @@ import com.examensw1.umlcollab.features.diagram.dto.DiagramResponse;
 import com.examensw1.umlcollab.features.diagram.dto.UmlClassResponse;
 import com.examensw1.umlcollab.features.diagram.dto.UmlRelationResponse;
 import com.examensw1.umlcollab.features.diagram.dto.UmlAttributeResponse;
+import com.examensw1.umlcollab.features.diagram.dto.UmlOperationResponse;
 import com.examensw1.umlcollab.features.diagram.model.RelationType;
 import com.examensw1.umlcollab.features.diagram.service.DiagramService;
 import java.time.Instant;
@@ -75,7 +76,7 @@ class DiagramControllerTest {
         UUID projectId = UUID.randomUUID();
         UUID diagramId = UUID.randomUUID();
         DiagramResponse diagram = new DiagramResponse(diagramId, projectId, "Dominio", 0L, Instant.parse("2026-09-02T00:00:00Z"));
-        DiagramDetailsResponse details = new DiagramDetailsResponse(diagram, List.of(), List.of());
+        DiagramDetailsResponse details = new DiagramDetailsResponse(diagram, List.of(), List.of(), List.of());
         when(diagramService.getDetails(diagramId)).thenReturn(details);
 
         mockMvc.perform(get("/api/diagrams/{diagramId}", diagramId))
@@ -121,6 +122,20 @@ class DiagramControllerTest {
                         .content("{\"name\":\"email\",\"dataType\":\"STRING\",\"visibility\":\"PRIVATE\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("email"));
+    }
+
+    @Test
+    void debeCrearOperacionConSolicitudValida() throws Exception {
+        UUID classId = UUID.randomUUID();
+        UmlOperationResponse operation = new UmlOperationResponse(UUID.randomUUID(), classId, "registrar", "PUBLIC", "void", List.of());
+        when(diagramService.createOperation(eq(classId), any())).thenReturn(operation);
+
+        mockMvc.perform(post("/api/classes/{classId}/operations", classId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"registrar\",\"visibility\":\"PUBLIC\",\"returnType\":\"VOID\",\"parameters\":[]}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name").value("registrar"))
+                .andExpect(jsonPath("$.returnType").value("void"));
     }
 
     @Test
