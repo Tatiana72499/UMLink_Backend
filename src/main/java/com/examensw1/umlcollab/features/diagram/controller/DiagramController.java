@@ -22,8 +22,8 @@ public class DiagramController {
     @GetMapping("/projects/{projectId}/diagrams") public List<DiagramResponse> listDiagrams(@PathVariable UUID projectId) { return service.findByProject(projectId); }
     @GetMapping("/diagrams/{diagramId}") public DiagramDetailsResponse getDiagram(@PathVariable UUID diagramId) { return service.getDetails(diagramId); }
     @GetMapping("/diagrams/{diagramId}/export") public ResponseEntity<byte[]> exportDiagram(@PathVariable UUID diagramId, @RequestParam InterchangeFormat format) {
-        String extension = format == InterchangeFormat.XML ? "xml" : format == InterchangeFormat.EA_SCRIPT ? "js" : "xmi";
-        MediaType contentType = format == InterchangeFormat.EA_SCRIPT ? MediaType.parseMediaType("application/javascript") : MediaType.APPLICATION_XML;
+        String extension = format == InterchangeFormat.XML ? "xml" : format == InterchangeFormat.EA_SCRIPT ? "js" : format == InterchangeFormat.PLANT_UML ? "puml" : "xmi";
+        MediaType contentType = format == InterchangeFormat.EA_SCRIPT ? MediaType.parseMediaType("application/javascript") : format == InterchangeFormat.PLANT_UML ? MediaType.TEXT_PLAIN : MediaType.APPLICATION_XML;
         return ResponseEntity.ok().contentType(contentType).header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=diagram." + extension).body(service.exportDiagram(diagramId, format));
     }
     @PostMapping(value = "/projects/{projectId}/diagrams/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE) @ResponseStatus(HttpStatus.CREATED) public DiagramResponse importDiagram(@PathVariable UUID projectId, @RequestParam("file") MultipartFile file) {

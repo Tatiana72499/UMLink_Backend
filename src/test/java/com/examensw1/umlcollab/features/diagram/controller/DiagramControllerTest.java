@@ -151,14 +151,15 @@ class DiagramControllerTest {
     @Test
     void debeActualizarAtributoConSolicitudValida() throws Exception {
         UUID attributeId = UUID.randomUUID();
-        UmlAttributeResponse attribute = new UmlAttributeResponse(attributeId, UUID.randomUUID(), "email", "String", "PRIVATE");
+        UmlAttributeResponse attribute = new UmlAttributeResponse(attributeId, UUID.randomUUID(), "email", "String", "PRIVATE", true);
         when(diagramService.updateAttribute(eq(attributeId), any())).thenReturn(attribute);
 
         mockMvc.perform(put("/api/attributes/{id}", attributeId)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"email\",\"dataType\":\"STRING\",\"visibility\":\"PRIVATE\"}"))
+                        .content("{\"name\":\"email\",\"dataType\":\"STRING\",\"visibility\":\"PRIVATE\",\"primaryKey\":true}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.name").value("email"));
+                .andExpect(jsonPath("$.name").value("email"))
+                .andExpect(jsonPath("$.primaryKey").value(true));
     }
 
     @Test

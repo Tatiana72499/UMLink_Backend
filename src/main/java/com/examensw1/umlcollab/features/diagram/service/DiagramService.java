@@ -142,6 +142,8 @@ public class DiagramService {
     }
     @Transactional public UmlAttributeResponse createAttribute(UUID classId, CreateAttributeRequest request) {
         UmlClass umlClass = findClass(classId); UmlAttribute attribute = new UmlAttribute(); attribute.setUmlClassId(classId); attribute.setName(request.name()); attribute.setDataType(request.dataType().displayName()); attribute.setVisibility(request.visibility() == null ? "PRIVATE" : request.visibility());
+        if (request.primaryKey()) clearPrimaryKey(classId, null);
+        attribute.setPrimaryKey(request.primaryKey());
         UmlAttribute saved = attributes.save(attribute);
         collaborationService.publishDiagramChanged(umlClass.getDiagramId(), "agregó un atributo");
         return toResponse(saved);
@@ -151,6 +153,8 @@ public class DiagramService {
         attribute.setName(request.name());
         attribute.setDataType(request.dataType().displayName());
         attribute.setVisibility(request.visibility());
+        if (request.primaryKey()) clearPrimaryKey(attribute.getUmlClassId(), attribute.getId());
+        attribute.setPrimaryKey(request.primaryKey());
         UmlAttribute saved = attributes.save(attribute);
         collaborationService.publishDiagramChanged(findClass(saved.getUmlClassId()).getDiagramId(), "actualizó un atributo");
         log.info("Atributo UML actualizado: {}", saved.getId());
@@ -235,6 +239,11 @@ public class DiagramService {
         if (!supportsCardinality(relation.getType())) {
             throw new IllegalArgumentException("Este tipo de relación UML no usa cardinalidad.");
         }
+        if (relation.getAssociationClassId() != null) {
+            throw new IllegalArgumentException("La asociación con clase intermedia no usa cardinalidad.");
+        }
+        validateCardinality(request.sourceCardinality());
+        validateCardinality(request.targetCardinality());
         relation.setSourceCardinality(request.sourceCardinality());
         relation.setTargetCardinality(request.targetCardinality());
         UmlRelation saved = relations.save(relation);
@@ -266,12 +275,16 @@ public class DiagramService {
         return attribute;
     }
     private void saveImportedMembers(UUID classId, UmlInterchangeService.ImportedClass importedClass) {
+        if (importedClass.attributes().stream().filter(UmlInterchangeService.ImportedAttribute::primaryKey).count() > 1) {
+            throw new IllegalArgumentException("Una clase importada solo puede tener una llave primaria.");
+        }
         for (UmlInterchangeService.ImportedAttribute item : importedClass.attributes()) {
             UmlAttribute attribute = new UmlAttribute();
             attribute.setUmlClassId(classId);
             attribute.setName(item.name().trim());
             attribute.setDataType(attributeType(item.dataType()).displayName());
             attribute.setVisibility(visibility(item.visibility()));
+            attribute.setPrimaryKey(item.primaryKey());
             attributes.save(attribute);
         }
         for (UmlInterchangeService.ImportedOperation item : importedClass.operations()) {
@@ -339,6 +352,8 @@ public class DiagramService {
         if (!source.getDiagramId().equals(relation.getDiagramId()) || !target.getDiagramId().equals(relation.getDiagramId())) {
             throw new IllegalArgumentException("Las clases deben pertenecer al mismo diagrama.");
         }
+        validateRelationEndpoints(relation, sourceClassId, targetClassId, type);
+        validateRelationLabel(type, label);
         relation.setSourceClassId(sourceClassId);
         relation.setTargetClassId(targetClassId);
         relation.setType(type);
@@ -349,6 +364,7 @@ public class DiagramService {
         relation.setAlignmentPoints(serializeAlignmentPoints(alignmentPoints));
         if (associationClassId != null) {
             if (type != RelationType.ASSOCIATION) throw new IllegalArgumentException("La clase de asociación solo puede vincularse a una asociación.");
+            if (sourceClassId.equals(targetClassId)) throw new IllegalArgumentException("La clase de asociación requiere dos clases diferentes.");
             if (associationClassId.equals(sourceClassId) || associationClassId.equals(targetClassId)) {
                 throw new IllegalArgumentException("La clase de asociación debe ser distinta de las clases conectadas.");
             }
@@ -356,15 +372,64 @@ public class DiagramService {
             if (!associationClass.getDiagramId().equals(relation.getDiagramId())) throw new IllegalArgumentException("La clase de asociación debe pertenecer al mismo diagrama.");
         }
         relation.setAssociationClassId(associationClassId);
-        if (supportsCardinality(type) && associationClassId == null) {
+        if (associationClassId != null) {
+            // Una clase intermedia representa una asociación muchos-a-muchos.
+            // La regla se aplica en el servidor para que importaciones y clientes
+            // distintos no puedan dejarla con cardinalidades inconsistentes.
+            relation.setSourceCardinality("1..*");
+            relation.setTargetCardinality("1..*");
+        } else if (supportsCardinality(type)) {
             if (sourceCardinality == null || targetCardinality == null) {
                 throw new IllegalArgumentException("La relación requiere cardinalidad en ambos extremos.");
             }
+            validateCardinality(sourceCardinality);
+            validateCardinality(targetCardinality);
             relation.setSourceCardinality(sourceCardinality);
             relation.setTargetCardinality(targetCardinality);
         } else {
             relation.setSourceCardinality(null);
             relation.setTargetCardinality(null);
+        }
+    }
+    private void clearPrimaryKey(UUID classId, UUID excludedAttributeId) {
+        attributes.findByUmlClassId(classId).stream()
+                .filter(UmlAttribute::isPrimaryKey)
+                .filter(attribute -> !java.util.Objects.equals(attribute.getId(), excludedAttributeId))
+                .forEach(attribute -> attribute.setPrimaryKey(false));
+    }
+    private void validateRelationEndpoints(UmlRelation relation, UUID sourceClassId, UUID targetClassId, RelationType type) {
+        if (sourceClassId.equals(targetClassId) && (type == RelationType.GENERALIZATION || type == RelationType.REALIZATION || type == RelationType.DEPENDENCY)) {
+            throw new IllegalArgumentException("Este tipo de relación UML requiere dos clases diferentes.");
+        }
+        if (type == RelationType.GENERALIZATION && createsGeneralizationCycle(relation.getId(), relation.getDiagramId(), sourceClassId, targetClassId)) {
+            throw new IllegalArgumentException("La generalización no puede crear un ciclo de herencia.");
+        }
+    }
+    private boolean createsGeneralizationCycle(UUID relationId, UUID diagramId, UUID sourceClassId, UUID targetClassId) {
+        java.util.Set<UUID> visited = new java.util.HashSet<>();
+        java.util.ArrayDeque<UUID> pending = new java.util.ArrayDeque<>();
+        pending.add(targetClassId);
+        while (!pending.isEmpty()) {
+            UUID currentClassId = pending.removeFirst();
+            if (!visited.add(currentClassId)) continue;
+            if (currentClassId.equals(sourceClassId)) return true;
+            relations.findByDiagramId(diagramId).stream()
+                    .filter(item -> item.getType() == RelationType.GENERALIZATION)
+                    .filter(item -> !java.util.Objects.equals(item.getId(), relationId))
+                    .filter(item -> item.getSourceClassId().equals(currentClassId))
+                    .map(UmlRelation::getTargetClassId)
+                    .forEach(pending::addLast);
+        }
+        return false;
+    }
+    private void validateRelationLabel(RelationType type, String label) {
+        if (!supportsLabel(type) && label != null && !label.isBlank()) {
+            throw new IllegalArgumentException("Este tipo de relación UML no admite palabra de enlace.");
+        }
+    }
+    private void validateCardinality(String cardinality) {
+        if (!List.of("1..1", "0..1", "1..*").contains(cardinality)) {
+            throw new IllegalArgumentException("La cardinalidad debe ser 1..1, 0..1 o 1..*.");
         }
     }
     private boolean supportsLabel(RelationType type) { return type == RelationType.ASSOCIATION || type == RelationType.AGGREGATION || type == RelationType.COMPOSITION || type == RelationType.DEPENDENCY; }
@@ -382,7 +447,7 @@ public class DiagramService {
     private DiagramDrawingResponse toResponse(DiagramDrawing item) { return new DiagramDrawingResponse(item.getId(), item.getSvgPath()); }
     private boolean supportsCardinality(RelationType type) { return type == RelationType.ASSOCIATION || type == RelationType.AGGREGATION || type == RelationType.COMPOSITION; }
     private UmlClassResponse toResponse(UmlClass item) { return new UmlClassResponse(item.getId(), item.getDiagramId(), item.getName(), item.getPositionX(), item.getPositionY(), item.getFillColor(), item.getVersion(), attributes.findByUmlClassId(item.getId()).stream().map(this::toResponse).toList(), operations.findByUmlClassId(item.getId()).stream().map(this::toResponse).toList()); }
-    private UmlAttributeResponse toResponse(UmlAttribute item) { return new UmlAttributeResponse(item.getId(), item.getUmlClassId(), item.getName(), item.getDataType(), item.getVisibility()); }
+    private UmlAttributeResponse toResponse(UmlAttribute item) { return new UmlAttributeResponse(item.getId(), item.getUmlClassId(), item.getName(), item.getDataType(), item.getVisibility(), item.isPrimaryKey()); }
     private UmlOperationResponse toResponse(UmlOperation item) { return new UmlOperationResponse(item.getId(), item.getUmlClassId(), item.getName(), item.getVisibility(), item.getReturnType(), operationParameters.findByUmlOperationIdOrderByParameterOrderAsc(item.getId()).stream().map(parameter -> new UmlOperationParameterResponse(parameter.getId(), parameter.getName(), parameter.getDataType(), parameter.getParameterOrder())).toList()); }
     private UmlRelationResponse toResponse(UmlRelation item) { return new UmlRelationResponse(item.getId(), item.getDiagramId(), item.getSourceClassId(), item.getTargetClassId(), item.getType(), item.getLabel(), item.getSourceCardinality(), item.getTargetCardinality(), item.getBendX(), item.getBendY(), item.getAssociationClassId(), deserializeAlignmentPoints(item.getAlignmentPoints())); }
 }

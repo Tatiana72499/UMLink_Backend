@@ -8,4 +8,5 @@ import jakarta.validation.constraints.Size;
 public record UpdateAttributeRequest(
         @NotBlank @Size(max = 120) String name,
         @NotNull AttributeDataType dataType,
-        @NotBlank @Size(max = 20) String visibility) {}
+        @NotBlank @Size(max = 20) String visibility,
+        boolean primaryKey) {}

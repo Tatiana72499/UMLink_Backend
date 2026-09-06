@@ -46,7 +46,11 @@ Los checks reflejan únicamente elementos comprobados en el código actual.
 
 - [x] Importar/exportar XML UMLink completo, XMI/UML genérico, XMI 2.1 visual y script de Automation API para Enterprise Architect 15: clases, atributos, operaciones, relaciones y cardinalidades admitidas.
 - [x] Validar XML/XMI de entrada, bloquear entidades externas y crear un diagrama nuevo de forma transaccional al importar.
+- [x] Importar y exportar el subconjunto PlantUML de clases: atributos, una PK por clase, operaciones, colores, relaciones, cardinalidades y clases de asociación.
+- [x] Persistir y exportar una única llave primaria por clase UML, sustituyendo la marca anterior al seleccionar otra.
+- [x] Validar restricciones estructurales por tipo de relación: cardinalidades, etiquetas, extremos y ciclos de herencia.
 - [ ] Definir comandos estructurados: crear clase, atributo, relación, eliminar y mover.
+- [ ] Integrar el servicio externo de IA de imagen/texto a PlantUML cuando exista un contrato HTTP versionado, autenticación y límites definidos.
 - [ ] Validar y ejecutar comandos IA mediante services existentes.
 
 ## Fase 4 — Generación y móvil

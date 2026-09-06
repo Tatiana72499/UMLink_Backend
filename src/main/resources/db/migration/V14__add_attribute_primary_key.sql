@@ -1,0 +1,2 @@
+ALTER TABLE uml_attributes
+    ADD COLUMN is_primary_key BOOLEAN NOT NULL DEFAULT FALSE;
