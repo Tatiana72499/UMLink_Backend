@@ -27,7 +27,9 @@ DELETE /api/projects/{id}/members/{memberId}
 
 GET    /api/projects/{projectId}/diagrams
 POST   /api/projects/{projectId}/diagrams
+POST   /api/projects/{projectId}/diagrams/import (multipart: file)
 GET    /api/diagrams/{diagramId}
+GET    /api/diagrams/{diagramId}/export?format=XML|XMI|EA_XMI|EA_SCRIPT
 PUT    /api/diagrams/{diagramId}
 DELETE /api/diagrams/{diagramId}?version={version}
 POST   /api/diagrams/{diagramId}/drawings
@@ -91,6 +93,8 @@ Las relaciones pueden incluir `bendX` y `bendY` no negativos por compatibilidad.
 Los trazos del lápiz se almacenan como rutas SVG por diagrama. `POST /api/diagrams/{diagramId}/drawings` recibe `svgPath` de hasta 12000 caracteres; cada trazo se guarda por separado y puede eliminarse individualmente o limpiarse por completo. Solo `OWNER` y `EDITOR` pueden modificarlos.
 
 Cada mutación persistida produce un evento de actividad con la persona, la acción controlada por el servidor y la fecha. `GET /api/diagrams/{diagramId}/activity` devuelve los 50 eventos más recientes para cualquier miembro del proyecto. Las previsualizaciones de lápiz y de interacción no se guardan.
+
+La interoperabilidad permite descargar `XML` UMLink, `XMI` UML genérico, `EA_XMI` o `EA_SCRIPT` para Enterprise Architect 15 y cargar archivos `.xml`/`.xmi` de hasta 1 MB. La importación crea un diagrama nuevo de forma transaccional para no sobrescribir un lienzo existente. Se bloquean DTD y entidades externas. XML UMLink conserva posiciones, alineaciones y trazos; el subconjunto XMI intercambia clases, atributos, operaciones, relaciones y cardinalidades admitidas. `EA_XMI` usa XMI 2.1 y la extensión de Sparx para crear un diagrama de clases `Logical`; `EA_SCRIPT` descarga JavaScript para ejecutar en Specialize > Scripting de EA 15, sobre un paquete seleccionado, y crea elementos, conectores, cardinalidades, asociaciones-clase y posiciones mediante la Automation API.
 
 ## Colaboración
 

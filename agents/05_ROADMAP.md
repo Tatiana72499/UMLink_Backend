@@ -44,8 +44,8 @@ Los checks reflejan únicamente elementos comprobados en el código actual.
 
 ## Fase 3 — Interoperabilidad e IA
 
-- [ ] Importar/exportar un subconjunto documentado de XML UML.
-- [ ] Compartir un archivo XMI UML interoperable, validado inicialmente contra Enterprise Architect u otro editor compatible con la versión XMI acordada.
+- [x] Importar/exportar XML UMLink completo, XMI/UML genérico, XMI 2.1 visual y script de Automation API para Enterprise Architect 15: clases, atributos, operaciones, relaciones y cardinalidades admitidas.
+- [x] Validar XML/XMI de entrada, bloquear entidades externas y crear un diagrama nuevo de forma transaccional al importar.
 - [ ] Definir comandos estructurados: crear clase, atributo, relación, eliminar y mover.
 - [ ] Validar y ejecutar comandos IA mediante services existentes.
 

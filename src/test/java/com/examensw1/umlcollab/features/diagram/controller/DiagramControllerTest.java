@@ -7,8 +7,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 
 import com.examensw1.umlcollab.config.CorsConfig;
 import com.examensw1.umlcollab.features.auth.service.AuthService;
@@ -19,6 +21,7 @@ import com.examensw1.umlcollab.features.diagram.dto.UmlRelationResponse;
 import com.examensw1.umlcollab.features.diagram.dto.UmlAttributeResponse;
 import com.examensw1.umlcollab.features.diagram.dto.UmlOperationResponse;
 import com.examensw1.umlcollab.features.diagram.model.RelationType;
+import com.examensw1.umlcollab.features.diagram.model.InterchangeFormat;
 import com.examensw1.umlcollab.features.diagram.service.DiagramService;
 import java.time.Instant;
 import java.util.List;
@@ -31,6 +34,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.mock.web.MockMultipartFile;
 
 @WebMvcTest(DiagramController.class)
 @AutoConfigureMockMvc(addFilters = false)
@@ -82,6 +86,39 @@ class DiagramControllerTest {
         mockMvc.perform(get("/api/diagrams/{diagramId}", diagramId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.diagram.id").value(diagramId.toString()));
+    }
+
+    @Test
+    void debeExportarUnDiagramaEnXmi() throws Exception {
+        UUID diagramId = UUID.randomUUID();
+        when(diagramService.exportDiagram(diagramId, InterchangeFormat.XMI)).thenReturn("<xmi:XMI />".getBytes());
+
+        mockMvc.perform(get("/api/diagrams/{diagramId}/export", diagramId).param("format", "XMI"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().contentType(MediaType.APPLICATION_XML));
+    }
+
+    @Test
+    void debeExportarUnDiagramaComoScriptDeEnterpriseArchitect() throws Exception {
+        UUID diagramId = UUID.randomUUID();
+        when(diagramService.exportDiagram(diagramId, InterchangeFormat.EA_SCRIPT)).thenReturn("function main() {}".getBytes());
+
+        mockMvc.perform(get("/api/diagrams/{diagramId}/export", diagramId).param("format", "EA_SCRIPT"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().contentType("application/javascript"))
+                .andExpect(header().string("Content-Disposition", "attachment; filename=diagram.js"));
+    }
+
+    @Test
+    void debeImportarUnArchivoXmlComoNuevoDiagrama() throws Exception {
+        UUID projectId = UUID.randomUUID();
+        DiagramResponse diagram = new DiagramResponse(UUID.randomUUID(), projectId, "Importado", 0L, Instant.parse("2026-09-02T00:00:00Z"));
+        when(diagramService.importDiagram(eq(projectId), any(), eq("modelo.xml"))).thenReturn(diagram);
+        MockMultipartFile file = new MockMultipartFile("file", "modelo.xml", MediaType.APPLICATION_XML_VALUE, "<umlinkUml/>".getBytes());
+
+        mockMvc.perform(multipart("/api/projects/{projectId}/diagrams/import", projectId).file(file))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name").value("Importado"));
     }
 
     @Test

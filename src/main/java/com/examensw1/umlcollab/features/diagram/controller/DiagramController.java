@@ -2,13 +2,18 @@ package com.examensw1.umlcollab.features.diagram.controller;
 
 import com.examensw1.umlcollab.features.diagram.dto.*;
 import com.examensw1.umlcollab.features.diagram.service.DiagramService;
+import com.examensw1.umlcollab.features.diagram.model.InterchangeFormat;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController @Validated @RequestMapping("/api") @RequiredArgsConstructor
 public class DiagramController {
@@ -16,6 +21,15 @@ public class DiagramController {
     @PostMapping("/projects/{projectId}/diagrams") @ResponseStatus(HttpStatus.CREATED) public DiagramResponse createDiagram(@PathVariable UUID projectId, @Valid @RequestBody CreateDiagramRequest request) { return service.createDiagram(projectId, request); }
     @GetMapping("/projects/{projectId}/diagrams") public List<DiagramResponse> listDiagrams(@PathVariable UUID projectId) { return service.findByProject(projectId); }
     @GetMapping("/diagrams/{diagramId}") public DiagramDetailsResponse getDiagram(@PathVariable UUID diagramId) { return service.getDetails(diagramId); }
+    @GetMapping("/diagrams/{diagramId}/export") public ResponseEntity<byte[]> exportDiagram(@PathVariable UUID diagramId, @RequestParam InterchangeFormat format) {
+        String extension = format == InterchangeFormat.XML ? "xml" : format == InterchangeFormat.EA_SCRIPT ? "js" : "xmi";
+        MediaType contentType = format == InterchangeFormat.EA_SCRIPT ? MediaType.parseMediaType("application/javascript") : MediaType.APPLICATION_XML;
+        return ResponseEntity.ok().contentType(contentType).header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=diagram." + extension).body(service.exportDiagram(diagramId, format));
+    }
+    @PostMapping(value = "/projects/{projectId}/diagrams/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE) @ResponseStatus(HttpStatus.CREATED) public DiagramResponse importDiagram(@PathVariable UUID projectId, @RequestParam("file") MultipartFile file) {
+        try { return service.importDiagram(projectId, file.getBytes(), file.getOriginalFilename()); }
+        catch (java.io.IOException ex) { throw new IllegalArgumentException("No pudimos leer el archivo seleccionado."); }
+    }
     @PutMapping("/diagrams/{diagramId}") public DiagramResponse updateDiagram(@PathVariable UUID diagramId, @Valid @RequestBody UpdateDiagramRequest request) { return service.updateDiagram(diagramId, request); }
     @DeleteMapping("/diagrams/{diagramId}") @ResponseStatus(HttpStatus.NO_CONTENT) public void deleteDiagram(@PathVariable UUID diagramId, @RequestParam @jakarta.validation.constraints.Min(0) Long version) { service.deleteDiagram(diagramId, version); }
     @PostMapping("/diagrams/{diagramId}/drawings") @ResponseStatus(HttpStatus.CREATED) public DiagramDrawingResponse createDrawing(@PathVariable UUID diagramId, @Valid @RequestBody CreateDiagramDrawingRequest request) { return service.createDrawing(diagramId, request); }

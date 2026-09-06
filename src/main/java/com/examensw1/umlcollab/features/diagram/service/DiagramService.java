@@ -11,6 +11,8 @@ import com.examensw1.umlcollab.features.diagram.model.*;
 import com.examensw1.umlcollab.features.diagram.repository.*;
 import com.examensw1.umlcollab.features.project.service.ProjectService;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +31,7 @@ public class DiagramService {
     private final DiagramDrawingRepository drawings;
     private final ObjectMapper objectMapper;
     private final CollaborationService collaborationService;
+    private final UmlInterchangeService interchangeService;
 
     @Transactional public DiagramResponse createDiagram(UUID projectId, CreateDiagramRequest request) {
         projectService.findEditableEntity(projectId);
@@ -55,6 +58,47 @@ public class DiagramService {
         Diagram diagram = diagrams.findById(diagramId).orElseThrow(() -> new ResourceNotFoundException("Diagrama", diagramId));
         projectService.findEntity(diagram.getProjectId());
         return new DiagramDetailsResponse(toResponse(diagram), classes.findByDiagramId(diagramId).stream().map(this::toResponse).toList(), relations.findByDiagramId(diagramId).stream().map(this::toResponse).toList(), drawings.findByDiagramIdOrderByCreatedAtAsc(diagramId).stream().map(this::toResponse).toList());
+    }
+    public byte[] exportDiagram(UUID diagramId, InterchangeFormat format) {
+        Diagram diagram = diagrams.findById(diagramId).orElseThrow(() -> new ResourceNotFoundException("Diagrama", diagramId));
+        projectService.findEntity(diagram.getProjectId());
+        return interchangeService.export(new DiagramDetailsResponse(toResponse(diagram), classes.findByDiagramId(diagramId).stream().map(this::toResponse).toList(), relations.findByDiagramId(diagramId).stream().map(this::toResponse).toList(), drawings.findByDiagramIdOrderByCreatedAtAsc(diagramId).stream().map(this::toResponse).toList()), format);
+    }
+    @Transactional public DiagramResponse importDiagram(UUID projectId, byte[] content, String originalFileName) {
+        projectService.findEditableEntity(projectId);
+        UmlInterchangeService.ImportedDiagram imported = interchangeService.parse(content, originalFileName);
+        Diagram diagram = new Diagram();
+        diagram.setProjectId(projectId);
+        diagram.setName(imported.name().trim());
+        Diagram savedDiagram = diagrams.saveAndFlush(diagram);
+        Map<String, UUID> classIds = new LinkedHashMap<>();
+        for (UmlInterchangeService.ImportedClass importedClass : imported.classes()) {
+            UmlClass umlClass = new UmlClass();
+            umlClass.setDiagramId(savedDiagram.getId());
+            umlClass.setName(importedClass.name().trim());
+            umlClass.setPositionX(importedClass.x());
+            umlClass.setPositionY(importedClass.y());
+            umlClass.setFillColor(importedClass.fillColor());
+            UmlClass savedClass = classes.save(umlClass);
+            classIds.put(importedClass.key(), savedClass.getId());
+            saveImportedMembers(savedClass.getId(), importedClass);
+        }
+        for (UmlInterchangeService.ImportedRelation importedRelation : imported.relations()) {
+            UmlRelation relation = new UmlRelation();
+            relation.setDiagramId(savedDiagram.getId());
+            UUID associationClassId = importedRelation.associationClassKey() == null ? null : classIds.get(importedRelation.associationClassKey());
+            applyRelationValues(relation, classIds.get(importedRelation.sourceKey()), classIds.get(importedRelation.targetKey()), importedRelation.type(), importedRelation.label(), importedRelation.sourceCardinality(), importedRelation.targetCardinality(), null, null, associationClassId, importedRelation.alignmentPoints().stream().map(point -> new RelationAlignmentPoint(point.x(), point.y())).toList());
+            relations.save(relation);
+        }
+        for (String path : imported.drawings()) {
+            DiagramDrawing drawing = new DiagramDrawing();
+            drawing.setDiagramId(savedDiagram.getId());
+            drawing.setSvgPath(path);
+            drawings.save(drawing);
+        }
+        collaborationService.publishDiagramChanged(savedDiagram.getId(), "importó un diagrama " + originalFileName);
+        log.info("Diagrama importado: {} en proyecto {}", savedDiagram.getId(), projectId);
+        return toResponse(savedDiagram);
     }
     @Transactional public DiagramDrawingResponse createDrawing(UUID diagramId, CreateDiagramDrawingRequest request) {
         findDiagram(diagramId);
@@ -220,6 +264,42 @@ public class DiagramService {
         UmlAttribute attribute = attributes.findById(id).orElseThrow(() -> new ResourceNotFoundException("Atributo UML", id));
         findClass(attribute.getUmlClassId());
         return attribute;
+    }
+    private void saveImportedMembers(UUID classId, UmlInterchangeService.ImportedClass importedClass) {
+        for (UmlInterchangeService.ImportedAttribute item : importedClass.attributes()) {
+            UmlAttribute attribute = new UmlAttribute();
+            attribute.setUmlClassId(classId);
+            attribute.setName(item.name().trim());
+            attribute.setDataType(attributeType(item.dataType()).displayName());
+            attribute.setVisibility(visibility(item.visibility()));
+            attributes.save(attribute);
+        }
+        for (UmlInterchangeService.ImportedOperation item : importedClass.operations()) {
+            UmlOperation operation = new UmlOperation();
+            operation.setUmlClassId(classId);
+            operation.setName(item.name().trim());
+            operation.setVisibility(visibility(item.visibility()));
+            operation.setReturnType(returnType(item.returnType()).displayName());
+            UmlOperation savedOperation = operations.save(operation);
+            for (int index = 0; index < item.parameters().size(); index++) {
+                UmlInterchangeService.ImportedParameter itemParameter = item.parameters().get(index);
+                UmlOperationParameter parameter = new UmlOperationParameter();
+                parameter.setUmlOperationId(savedOperation.getId());
+                parameter.setName(itemParameter.name().trim());
+                parameter.setDataType(attributeType(itemParameter.dataType()).displayName());
+                parameter.setParameterOrder(index);
+                operationParameters.save(parameter);
+            }
+        }
+    }
+    private AttributeDataType attributeType(String value) {
+        return java.util.Arrays.stream(AttributeDataType.values()).filter(type -> type.displayName().equals(value)).findFirst().orElse(AttributeDataType.STRING);
+    }
+    private OperationReturnType returnType(String value) {
+        return java.util.Arrays.stream(OperationReturnType.values()).filter(type -> type.displayName().equals(value)).findFirst().orElse(OperationReturnType.VOID);
+    }
+    private String visibility(String value) {
+        return "PRIVATE".equals(value) || "PROTECTED".equals(value) ? value : "PUBLIC";
     }
     private UmlOperation findOperation(UUID id) {
         UmlOperation operation = operations.findById(id).orElseThrow(() -> new ResourceNotFoundException("Operación UML", id));
