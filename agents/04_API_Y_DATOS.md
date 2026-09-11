@@ -28,8 +28,10 @@ DELETE /api/projects/{id}/members/{memberId}
 GET    /api/projects/{projectId}/diagrams
 POST   /api/projects/{projectId}/diagrams
 POST   /api/projects/{projectId}/diagrams/import (multipart: file)
+POST   /api/projects/{projectId}/diagrams/ai/image-preview (multipart: file PNG|JPG|WEBP, no persiste)
 GET    /api/diagrams/{diagramId}
 GET    /api/diagrams/{diagramId}/export?format=XML|XMI|EA_XMI|EA_SCRIPT|PLANT_UML
+GET    /api/diagrams/{diagramId}/generate/backend (ZIP de Spring Boot + Flyway)
 PUT    /api/diagrams/{diagramId}
 DELETE /api/diagrams/{diagramId}?version={version}
 POST   /api/diagrams/{diagramId}/drawings
@@ -95,6 +97,10 @@ Los trazos del lápiz se almacenan como rutas SVG por diagrama. `POST /api/diagr
 Cada mutación persistida produce un evento de actividad con la persona, la acción controlada por el servidor y la fecha. `GET /api/diagrams/{diagramId}/activity` devuelve los 50 eventos más recientes para cualquier miembro del proyecto. Las previsualizaciones de lápiz y de interacción no se guardan.
 
 La interoperabilidad permite descargar `XML` UMLink, `XMI` UML genérico, `EA_XMI`, `EA_SCRIPT` para Enterprise Architect 15 o `PLANT_UML` y cargar archivos `.xml`, `.xmi` o `.puml` de hasta 1 MB. La importación crea un diagrama nuevo de forma transaccional para no sobrescribir un lienzo existente. Se bloquean DTD y entidades externas. XML UMLink conserva posiciones, alineaciones y trazos; el importador acepta XMI/UML moderno y el XMI 1.x clásico de Enterprise Architect con clases, atributos, operaciones, asociaciones, generalizaciones y cardinalidades admitidas. PlantUML intercambia clases, interfaces, atributos (incluida una PK `<<PK>>`), operaciones, colores, relaciones, cardinalidades y clases de asociación; posiciones, puntos de alineación y trazos se reconstruyen automáticamente porque no forman parte del texto PlantUML. `EA_XMI` usa XMI 2.1 y la extensión de Sparx para crear un diagrama de clases `Logical`; `EA_SCRIPT` descarga JavaScript para ejecutar en Specialize > Scripting de EA 15, sobre un paquete seleccionado, y crea elementos, conectores, cardinalidades, asociaciones-clase y posiciones mediante la Automation API.
+
+El análisis por imagen recibe PNG, JPG o WEBP de hasta 2 MB, requiere rol `OWNER` o `EDITOR` y llama a OpenRouter con la clave local `OPENROUTER_API_KEY`. El endpoint solo devuelve PlantUML validado y estadísticas; no persiste ni ejecuta cambios. El cliente debe mostrar la propuesta y confirmar mediante la importación PlantUML existente, que crea un diagrama nuevo. No se registran claves, imágenes ni respuestas completas del proveedor.
+
+La generación de backend descarga un ZIP no persistido para cualquier miembro que pueda consultar el diagrama. Incluye un proyecto Maven Spring Boot 3.5.4/Java 21, capas `model`, `repository`, `service`, `controller` y `dto` por clase, configuración PostgreSQL y `V1__initial_schema.sql` de Flyway. Una clase sin PK recibe `UUID id`; una PK existente mantiene su tipo pero se normaliza como la propiedad técnica `id`. Las relaciones 1–1, 1–muchos y muchos–muchos se traducen a anotaciones JPA y FK/tablas intermedias. Las dependencias, realización y generalización requieren refinamiento de dominio posterior y no crean FK en esta primera versión.
 
 ## Colaboración
 

@@ -37,6 +37,20 @@ Las decisiones significativas deben registrarse aquí. Una ADR no tiene que ser 
 - **Motivo:** evita sobrescrituras silenciosas y prepara el flujo colaborativo sin introducir bloqueos pesados.
 - **Consecuencia:** el frontend debe conservar y enviar la versión recibida; ante conflicto debe recargar el recurso.
 
+## ADR-006 — IA visual mediante vista previa PlantUML confirmable
+
+- **Estado:** aceptada.
+- **Contexto:** se necesita crear una propuesta editable desde una foto sin dar a un proveedor externo acceso directo a PostgreSQL ni sobrescribir diagramas.
+- **Decisión:** OpenRouter se consume desde backend con `OPENROUTER_API_KEY` local y el router `openrouter/free`. La respuesta se exige como PlantUML, se valida con el importador existente y se devuelve como vista previa no persistida. Solo una confirmación explícita del usuario crea un diagrama nuevo mediante la importación transaccional existente.
+- **Consecuencias:** el proveedor puede estar sujeto a disponibilidad y límites gratuitos; nunca se mandan secretos al frontend ni se registran imágenes, claves o respuestas completas.
+
+## ADR-007 — Backend generado como ZIP no persistido
+
+- **Estado:** aceptada.
+- **Contexto:** cada diagrama debe poder convertirse en una base Spring Boot con PostgreSQL sin introducir repositorios ni archivos arbitrarios en el servidor UMLink.
+- **Decisión:** generar el proyecto en memoria y descargar un ZIP. El generador crea capas por entidad y una migración Flyway inicial. Si no hay PK UML, se agrega `UUID id`; las relaciones persistentes se traducen según cardinalidad.
+- **Consecuencias:** el archivo requiere revisión humana de reglas de negocio, nombres y restricciones antes de producción. La generación no modifica el diagrama ni el sistema de archivos del servidor.
+
 ## Plantilla para futuras ADR
 
 ```text

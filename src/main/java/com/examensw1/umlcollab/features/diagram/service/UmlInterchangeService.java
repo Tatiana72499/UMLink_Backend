@@ -113,11 +113,16 @@ public class UmlInterchangeService {
     private List<ImportedAttribute> plantUmlAttributes(String body) {
         if (body == null || body.isBlank()) return List.of();
         List<ImportedAttribute> attributes = new ArrayList<>();
-        java.util.regex.Pattern attributePattern = java.util.regex.Pattern.compile("^\\s*([+#-])?\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*:\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(<<PK>>)?\\s*$");
+        java.util.regex.Pattern attributePattern = java.util.regex.Pattern.compile("^\\s*([+#-])?\\s*(?:(public|private|protected)\\s+)?([\\p{L}_][\\p{L}\\p{N}_]*)(?:\\s*:\\s*([A-Za-z_][A-Za-z0-9_.]*))?\\s*(.*)$", java.util.regex.Pattern.CASE_INSENSITIVE);
         for (String line : body.split("\\R")) {
             if (line.contains("(")) continue;
             java.util.regex.Matcher matcher = attributePattern.matcher(line);
-            if (matcher.matches()) attributes.add(new ImportedAttribute(matcher.group(2), normalizeType(matcher.group(3)), plantUmlImportedVisibility(matcher.group(1)), matcher.group(4) != null));
+            if (!matcher.matches()) continue;
+            String suffix = matcher.group(5);
+            boolean primaryKey = suffix != null && suffix.toUpperCase(Locale.ROOT).contains("PK");
+            String explicitVisibility = matcher.group(2);
+            String visibility = explicitVisibility == null ? plantUmlImportedVisibility(matcher.group(1)) : explicitVisibility.toUpperCase(Locale.ROOT);
+            attributes.add(new ImportedAttribute(matcher.group(3), normalizeType(matcher.group(4) == null ? "String" : matcher.group(4)), visibility, primaryKey));
         }
         return attributes;
     }
@@ -582,7 +587,7 @@ public class UmlInterchangeService {
     private String xmiCardinality(Element item) { String multiplicity = optional(item, "multiplicity"); if (multiplicity != null) return switch (multiplicity) { case "1", "1..1" -> "1..1"; case "0..1" -> "0..1"; case "1..*", "1..n" -> "1..*"; default -> throw new IllegalArgumentException("La cardinalidad XMI " + multiplicity + " no está soportada. Usa 1..1, 0..1 o 1..*."); }; String lower = value(item, "lower", "1"); String upper = value(item, "upper", "1"); if ("1".equals(lower) && "1".equals(upper)) return "1..1"; if ("0".equals(lower) && "1".equals(upper)) return "0..1"; if ("1".equals(lower) && "*".equals(upper)) return "1..*"; throw new IllegalArgumentException("La cardinalidad XMI " + lower + ".." + upper + " no está soportada. Usa 1..1, 0..1 o 1..*."); }
     private RelationType associationType(List<Element> ends) { String aggregation = value(ends.get(0), "aggregation", "none"); return "composite".equals(aggregation) ? RelationType.COMPOSITION : "shared".equals(aggregation) ? RelationType.AGGREGATION : RelationType.ASSOCIATION; }
     private RelationType relationType(String value) { try { return RelationType.valueOf(value.toUpperCase(Locale.ROOT)); } catch (RuntimeException ex) { throw new IllegalArgumentException("El archivo contiene un tipo de relación UML no compatible: " + value); } }
-    private String normalizeType(String value) { String normalized = value == null ? "" : value.substring(value.lastIndexOf(':') + 1).toLowerCase(Locale.ROOT); return switch (normalized) { case "string" -> "String"; case "integer", "int" -> "Integer"; case "long" -> "Long"; case "double", "float", "real" -> "Double"; case "boolean", "bool" -> "Boolean"; case "uuid" -> "UUID"; case "localdate", "date" -> "LocalDate"; case "localdatetime", "datetime" -> "LocalDateTime"; case "void", "" -> "void"; default -> "String"; }; }
+    private String normalizeType(String value) { String raw = value == null ? "" : value; String normalized = raw.substring(Math.max(raw.lastIndexOf(':'), raw.lastIndexOf('.')) + 1).toLowerCase(Locale.ROOT); return switch (normalized) { case "string" -> "String"; case "integer", "int" -> "Integer"; case "long" -> "Long"; case "double", "float", "real" -> "Double"; case "boolean", "bool" -> "Boolean"; case "uuid" -> "UUID"; case "localdate", "date" -> "LocalDate"; case "localdatetime", "datetime" -> "LocalDateTime"; case "void", "" -> "void"; default -> "String"; }; }
     private String identifier(Element item) { String id = optional(item, "id"); if (id == null) throw new IllegalArgumentException("Una clase XMI no contiene xmi:id."); return id; }
     private String typeOf(Element item) { String type = optional(item, "type"); return type == null ? "" : type; }
     private boolean isXmiElement(Element item, String kind) { String type = typeOf(item); return kind.equals(nameOf(item)) || type.equals(kind) || type.endsWith(":" + kind); }

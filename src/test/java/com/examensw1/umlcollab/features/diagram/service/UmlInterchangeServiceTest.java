@@ -133,6 +133,45 @@ class UmlInterchangeServiceTest {
     }
 
     @Test
+    void importsCommonAiAttributeVariants() {
+        String plantUml = """
+                @startuml
+                class Usuario {
+                  private id: int <<PK>>
+                  + nombre : String = \"sin nombre\"
+                  # creadoEn: java.time.LocalDateTime {readOnly}
+                }
+                @enduml
+                """;
+
+        UmlInterchangeService.ImportedClass imported = service.parse(plantUml.getBytes(StandardCharsets.UTF_8), "ia.puml").classes().getFirst();
+
+        assertThat(imported.attributes()).extracting(UmlInterchangeService.ImportedAttribute::name).containsExactly("id", "nombre", "creadoEn");
+        assertThat(imported.attributes().getFirst().primaryKey()).isTrue();
+        assertThat(imported.attributes()).extracting(UmlInterchangeService.ImportedAttribute::visibility).containsExactly("PRIVATE", "PUBLIC", "PROTECTED");
+        assertThat(imported.attributes().get(2).dataType()).isEqualTo("LocalDateTime");
+    }
+
+    @Test
+    void importsUntypedAttributesGeneratedFromAnImageAsStrings() {
+        String plantUml = """
+                @startuml
+                class Libro {
+                  ID
+                  Nombre
+                  Autor
+                  Año
+                }
+                @enduml
+                """;
+
+        UmlInterchangeService.ImportedClass imported = service.parse(plantUml.getBytes(StandardCharsets.UTF_8), "imagen.puml").classes().getFirst();
+
+        assertThat(imported.attributes()).extracting(UmlInterchangeService.ImportedAttribute::name).containsExactly("ID", "Nombre", "Autor", "Año");
+        assertThat(imported.attributes()).extracting(UmlInterchangeService.ImportedAttribute::dataType).containsOnly("String");
+    }
+
+    @Test
     void exportsPlantUmlWithPrimaryKeyAndManyToManyAssociationClass() {
         UUID projectId = UUID.randomUUID();
         UUID diagramId = UUID.randomUUID();

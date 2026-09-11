@@ -50,13 +50,13 @@ Los checks reflejan únicamente elementos comprobados en el código actual.
 - [x] Persistir y exportar una única llave primaria por clase UML, sustituyendo la marca anterior al seleccionar otra.
 - [x] Validar restricciones estructurales por tipo de relación: cardinalidades, etiquetas, extremos y ciclos de herencia.
 - [ ] Definir comandos estructurados: crear clase, atributo, relación, eliminar y mover.
-- [ ] Integrar el servicio externo de IA de imagen/texto a PlantUML cuando exista un contrato HTTP versionado, autenticación y límites definidos.
+- [x] Integrar la vista previa externa de IA de imagen a PlantUML mediante OpenRouter, con contrato HTTP, autenticación local, límites y confirmación explícita antes de importar.
 - [ ] Validar y ejecutar comandos IA mediante services existentes.
 
 ## Fase 4 — Generación y móvil
 
-- [ ] Generar backend Spring Boot en capas desde el modelo UML.
-- [ ] Crear migraciones PostgreSQL del backend generado.
+- [x] Generar un backend Spring Boot en capas desde el modelo UML como ZIP descargable.
+- [x] Crear `V1__initial_schema.sql` de Flyway con PostgreSQL dentro del backend generado.
 - [ ] Crear app móvil con lectura/escritura y sincronización offline.
 
 ## Próximo incremento acordado
