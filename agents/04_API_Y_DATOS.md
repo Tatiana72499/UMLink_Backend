@@ -28,8 +28,10 @@ DELETE /api/projects/{id}/members/{memberId}
 GET    /api/projects/{projectId}/diagrams
 POST   /api/projects/{projectId}/diagrams
 POST   /api/projects/{projectId}/diagrams/import (multipart: file)
+POST   /api/projects/{projectId}/diagrams/ai/image-preview (multipart: file PNG|JPG|WEBP, no persiste)
 GET    /api/diagrams/{diagramId}
-GET    /api/diagrams/{diagramId}/export?format=XML|XMI|EA_XMI|EA_SCRIPT
+GET    /api/diagrams/{diagramId}/export?format=XML|XMI|EA_XMI|EA_SCRIPT|PLANT_UML
+GET    /api/diagrams/{diagramId}/generate/backend (ZIP de Spring Boot + Flyway)
 PUT    /api/diagrams/{diagramId}
 DELETE /api/diagrams/{diagramId}?version={version}
 POST   /api/diagrams/{diagramId}/drawings
@@ -76,11 +78,11 @@ Project → Diagram → UmlClass → UmlAttribute
 
 Una relación UML debe enlazar clases del mismo diagrama. Puede enlazar una clase consigo misma para representar una relación recursiva; una clase intermedia, en cambio, siempre requiere dos clases diferentes. Estas reglas se validan en el service.
 
-Las relaciones `ASSOCIATION`, `AGGREGATION` y `COMPOSITION` requieren cardinalidad válida en ambos extremos. Las únicas opciones permitidas son `1..1`, `0..1` y `1..*`. `GENERALIZATION` representa herencia; `REALIZATION` y `DEPENDENCY` no usan cardinalidad.
+Las relaciones `ASSOCIATION`, `AGGREGATION` y `COMPOSITION` requieren cardinalidad válida en ambos extremos. Las únicas opciones permitidas son `1..1`, `0..1` y `1..*`; admiten relaciones recursivas. `GENERALIZATION` representa herencia, exige extremos distintos y no permite ciclos. `REALIZATION` y `DEPENDENCY` exigen extremos distintos y no usan cardinalidad. Solo asociación, agregación, composición y dependencia admiten palabra de enlace. Una clase intermedia solo puede asociarse a una asociación entre dos clases distintas y representa obligatoriamente una relación muchos-a-muchos: el servidor fija ambos extremos en `1..*`.
 
 `PUT /api/relations/{id}/cardinality` recibe `sourceCardinality` y `targetCardinality`. Solo se permite para asociación, agregación y composición; no cambia las clases conectadas ni el tipo de relación.
 
-`PUT /api/attributes/{id}` actualiza `name`, `dataType` y `visibility`. `PUT /api/relations/{id}` actualiza clases de origen/destino, tipo y cardinalidades respetando las reglas del tipo UML.
+`POST /api/classes/{classId}/attributes` y `PUT /api/attributes/{id}` reciben/actualizan `name`, `dataType`, `visibility` y `primaryKey`. La marca `primaryKey` es booleana y solo un atributo por clase puede tenerla activa; al marcar otro, el servidor desmarca la llave anterior de esa clase. `PUT /api/relations/{id}` actualiza clases de origen/destino, tipo y cardinalidades respetando las reglas del tipo UML.
 
 Las solicitudes de atributos aceptan únicamente: `STRING`, `INTEGER`, `LONG`, `DOUBLE`, `BOOLEAN`, `UUID`, `LOCAL_DATE` y `LOCAL_DATE_TIME`. Las clases incluyen `fillColor` hexadecimal o nulo para no usar relleno; las relaciones admiten `label` de hasta 120 caracteres únicamente en asociación, agregación, composición y dependencia.
 
@@ -88,13 +90,17 @@ Las operaciones UML se incluyen dentro de cada clase. Su contrato es `name`, `vi
 
 Las relaciones pueden incluir `bendX` y `bendY` no negativos por compatibilidad. `alignmentPoints` admite hasta 20 puntos ordenados `{x, y}` para enrutar manualmente una relación y se persiste como parte de esta. Una asociación puede incluir opcionalmente `associationClassId`, que debe identificar una tercera clase del mismo diagrama; no puede ser uno de sus extremos ni utilizarse en otro tipo de relación.
 
-`POST /api/diagrams/{diagramId}/association-classes` crea de manera transaccional una asociación muchos-a-muchos y su clase intermedia. Recibe los extremos, nombre, posición y color; omite cardinalidades y responde ambos elementos ya vinculados. Si algo no es válido, no persiste una clase ni relación parcial.
+`POST /api/diagrams/{diagramId}/association-classes` crea de manera transaccional una asociación muchos-a-muchos y su clase intermedia. Recibe los extremos, nombre, posición y color; el servidor fija ambas cardinalidades en `1..*` y responde ambos elementos ya vinculados. Si algo no es válido, no persiste una clase ni relación parcial.
 
 Los trazos del lápiz se almacenan como rutas SVG por diagrama. `POST /api/diagrams/{diagramId}/drawings` recibe `svgPath` de hasta 12000 caracteres; cada trazo se guarda por separado y puede eliminarse individualmente o limpiarse por completo. Solo `OWNER` y `EDITOR` pueden modificarlos.
 
 Cada mutación persistida produce un evento de actividad con la persona, la acción controlada por el servidor y la fecha. `GET /api/diagrams/{diagramId}/activity` devuelve los 50 eventos más recientes para cualquier miembro del proyecto. Las previsualizaciones de lápiz y de interacción no se guardan.
 
-La interoperabilidad permite descargar `XML` UMLink, `XMI` UML genérico, `EA_XMI` o `EA_SCRIPT` para Enterprise Architect 15 y cargar archivos `.xml`/`.xmi` de hasta 1 MB. La importación crea un diagrama nuevo de forma transaccional para no sobrescribir un lienzo existente. Se bloquean DTD y entidades externas. XML UMLink conserva posiciones, alineaciones y trazos; el subconjunto XMI intercambia clases, atributos, operaciones, relaciones y cardinalidades admitidas. `EA_XMI` usa XMI 2.1 y la extensión de Sparx para crear un diagrama de clases `Logical`; `EA_SCRIPT` descarga JavaScript para ejecutar en Specialize > Scripting de EA 15, sobre un paquete seleccionado, y crea elementos, conectores, cardinalidades, asociaciones-clase y posiciones mediante la Automation API.
+La interoperabilidad permite descargar `XML` UMLink, `XMI` UML genérico, `EA_XMI`, `EA_SCRIPT` para Enterprise Architect 15 o `PLANT_UML` y cargar archivos `.xml`, `.xmi` o `.puml` de hasta 1 MB. La importación crea un diagrama nuevo de forma transaccional para no sobrescribir un lienzo existente. Se bloquean DTD y entidades externas. XML UMLink conserva posiciones, alineaciones y trazos; el importador acepta XMI/UML moderno y el XMI 1.x clásico de Enterprise Architect con clases, atributos, operaciones, asociaciones, generalizaciones y cardinalidades admitidas. PlantUML intercambia clases, interfaces, atributos (incluida una PK `<<PK>>`), operaciones, colores, relaciones, cardinalidades y clases de asociación; posiciones, puntos de alineación y trazos se reconstruyen automáticamente porque no forman parte del texto PlantUML. `EA_XMI` usa XMI 2.1 y la extensión de Sparx para crear un diagrama de clases `Logical`; `EA_SCRIPT` descarga JavaScript para ejecutar en Specialize > Scripting de EA 15, sobre un paquete seleccionado, y crea elementos, conectores, cardinalidades, asociaciones-clase y posiciones mediante la Automation API.
+
+El análisis por imagen recibe PNG, JPG o WEBP de hasta 2 MB, requiere rol `OWNER` o `EDITOR` y llama a OpenRouter con la clave local `OPENROUTER_API_KEY`. El endpoint solo devuelve PlantUML validado y estadísticas; no persiste ni ejecuta cambios. El cliente debe mostrar la propuesta y confirmar mediante la importación PlantUML existente, que crea un diagrama nuevo. No se registran claves, imágenes ni respuestas completas del proveedor.
+
+La generación de backend descarga un ZIP no persistido para cualquier miembro que pueda consultar el diagrama. Incluye un proyecto Maven Spring Boot 3.5.4/Java 21, capas `model`, `repository`, `service`, `controller` y `dto` por clase, configuración PostgreSQL y `V1__initial_schema.sql` de Flyway. Una clase sin PK recibe `UUID id`; una PK existente mantiene su tipo pero se normaliza como la propiedad técnica `id`. Las relaciones 1–1, 1–muchos y muchos–muchos se traducen a anotaciones JPA y FK/tablas intermedias. Las dependencias, realización y generalización requieren refinamiento de dominio posterior y no crean FK en esta primera versión.
 
 ## Colaboración
 

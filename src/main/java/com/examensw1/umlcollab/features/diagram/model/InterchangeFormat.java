@@ -4,5 +4,6 @@ public enum InterchangeFormat {
     XML,
     XMI,
     EA_XMI,
-    EA_SCRIPT
+    EA_SCRIPT,
+    PLANT_UML
 }

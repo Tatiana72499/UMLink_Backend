@@ -1,4 +1,6 @@
 spring:
+  config:
+    import: optional:file:.env[.properties]
   application:
     name: uml-collab-backend
   datasource:
@@ -11,6 +13,10 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
+  servlet:
+    multipart:
+      max-file-size: 2MB
+      max-request-size: 2MB
 server:
   port: ${PORT:8080}
 jwt:

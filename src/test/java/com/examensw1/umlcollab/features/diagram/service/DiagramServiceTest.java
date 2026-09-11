@@ -1,8 +1,10 @@
 package com.examensw1.umlcollab.features.diagram.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -27,6 +29,7 @@ import com.examensw1.umlcollab.features.diagram.model.UmlOperation;
 import com.examensw1.umlcollab.features.diagram.model.Diagram;
 import com.examensw1.umlcollab.features.diagram.model.RelationType;
 import com.examensw1.umlcollab.features.diagram.model.UmlClass;
+import com.examensw1.umlcollab.features.diagram.model.UmlAttribute;
 import com.examensw1.umlcollab.features.diagram.model.UmlRelation;
 import com.examensw1.umlcollab.features.diagram.repository.DiagramRepository;
 import com.examensw1.umlcollab.features.diagram.repository.DiagramDrawingRepository;
@@ -174,6 +177,55 @@ class DiagramServiceTest {
     }
 
     @Test
+    void debeRechazarRelacionRecursivaDeRealizacion() {
+        when(classes.findById(sourceClassId)).thenReturn(Optional.of(umlClass(sourceClassId)));
+
+        assertThrows(IllegalArgumentException.class, () -> service.createRelation(diagramId,
+                new CreateRelationRequest(sourceClassId, sourceClassId, RelationType.REALIZATION, null, null, null)));
+    }
+
+    @Test
+    void debeRechazarCicloDeGeneralizacion() {
+        stubClassesInDiagram();
+        UmlRelation existing = new UmlRelation();
+        existing.setId(UUID.randomUUID());
+        existing.setDiagramId(diagramId);
+        existing.setType(RelationType.GENERALIZATION);
+        existing.setSourceClassId(targetClassId);
+        existing.setTargetClassId(sourceClassId);
+        when(relations.findByDiagramId(diagramId)).thenReturn(List.of(existing));
+
+        assertThrows(IllegalArgumentException.class, () -> service.createRelation(diagramId,
+                new CreateRelationRequest(sourceClassId, targetClassId, RelationType.GENERALIZATION, null, null, null)));
+    }
+
+    @Test
+    void debeRechazarPalabraDeEnlaceEnGeneralizacion() {
+        stubClassesInDiagram();
+
+        assertThrows(IllegalArgumentException.class, () -> service.createRelation(diagramId,
+                new CreateRelationRequest(sourceClassId, targetClassId, RelationType.GENERALIZATION, "extiende", null, null)));
+    }
+
+    @Test
+    void debeReemplazarLlavePrimariaAnteriorAlCrearAtributo() {
+        UmlClass umlClass = umlClass(sourceClassId);
+        UmlAttribute existingPrimaryKey = new UmlAttribute();
+        existingPrimaryKey.setId(UUID.randomUUID());
+        existingPrimaryKey.setUmlClassId(sourceClassId);
+        existingPrimaryKey.setPrimaryKey(true);
+        when(classes.findById(sourceClassId)).thenReturn(Optional.of(umlClass));
+        when(attributes.findByUmlClassId(sourceClassId)).thenReturn(List.of(existingPrimaryKey));
+        when(attributes.save(any(UmlAttribute.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = service.createAttribute(sourceClassId,
+                new com.examensw1.umlcollab.features.diagram.dto.CreateAttributeRequest("codigo", AttributeDataType.UUID, "PRIVATE", true));
+
+        assertFalse(existingPrimaryKey.isPrimaryKey());
+        assertTrue(response.primaryKey());
+    }
+
+    @Test
     void debeVincularUnaClaseIntermediaAUnaAsociacion() {
         UUID associationClassId = UUID.randomUUID();
         stubClassesInDiagram();
@@ -214,7 +266,8 @@ class DiagramServiceTest {
 
         assertEquals("Inscripción", response.umlClass().name());
         assertEquals(associationClassId, response.relation().associationClassId());
-        assertNull(response.relation().sourceCardinality());
+        assertEquals("1..*", response.relation().sourceCardinality());
+        assertEquals("1..*", response.relation().targetCardinality());
     }
 
     @Test
