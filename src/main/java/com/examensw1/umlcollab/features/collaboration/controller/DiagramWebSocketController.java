@@ -28,7 +28,8 @@ public class DiagramWebSocketController {
         }
         if (event.type() == DiagramEventType.DRAWING_PREVIEW
                 || event.type() == DiagramEventType.DRAWING_PREVIEW_CLEARED
-                || event.type() == DiagramEventType.ELEMENT_INTERACTION) {
+                || event.type() == DiagramEventType.ELEMENT_INTERACTION
+                || event.type() == DiagramEventType.CLASS_POSITION_PREVIEW) {
             service.publishEphemeralEvent(event.diagramId(), principal.getName(), event.type(), event.payload());
         }
     }

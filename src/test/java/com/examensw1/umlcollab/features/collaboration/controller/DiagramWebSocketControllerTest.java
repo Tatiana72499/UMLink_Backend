@@ -46,6 +46,16 @@ class DiagramWebSocketControllerTest {
     }
 
     @Test
+    void debeReenviarLaPosicionTemporalParaQueElServicioLaAutorice() {
+        UUID diagramId = UUID.randomUUID();
+        Principal principal = () -> "tatiana@example.com";
+
+        controller.handle(new DiagramEvent(diagramId, DiagramEventType.CLASS_POSITION_PREVIEW, null, null), principal);
+
+        verify(collaborationService).publishEphemeralEvent(any(), any(), any(), any());
+    }
+
+    @Test
     void debeReenviarPrevisualizacionDeTrazoParaQueElServicioLaAutorice() {
         UUID diagramId = UUID.randomUUID();
         Principal principal = () -> "tatiana@example.com";

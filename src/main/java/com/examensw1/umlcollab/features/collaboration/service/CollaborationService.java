@@ -72,7 +72,8 @@ public class CollaborationService {
 
     public void publishEphemeralEvent(UUID diagramId, String email, DiagramEventType type, JsonNode payload) {
         if (type != DiagramEventType.DRAWING_PREVIEW && type != DiagramEventType.DRAWING_PREVIEW_CLEARED
-                && type != DiagramEventType.ELEMENT_INTERACTION) {
+                && type != DiagramEventType.ELEMENT_INTERACTION
+                && type != DiagramEventType.CLASS_POSITION_PREVIEW) {
             throw new IllegalArgumentException("El tipo de evento efímero no es válido.");
         }
         AppUser user = requireEditor(diagramId, email);
@@ -122,6 +123,12 @@ public class CollaborationService {
     private void publish(UUID diagramId, DiagramEventType type, CollaborationParticipant participant, JsonNode payload) {
         DiagramEvent event = new DiagramEvent(diagramId, type, payload, participant);
         messagingTemplate.convertAndSend("/topic/diagrams/" + diagramId, event);
+        if (type == DiagramEventType.DRAWING_PREVIEW || type == DiagramEventType.DRAWING_PREVIEW_CLEARED
+                || type == DiagramEventType.ELEMENT_INTERACTION || type == DiagramEventType.CLASS_POSITION_PREVIEW) {
+            log.debug("Evento efímero de colaboración {} publicado para diagrama {} por usuario {}", type, diagramId,
+                    participant.userId());
+            return;
+        }
         log.info("Evento de colaboración {} publicado para diagrama {} por usuario {}", type, diagramId,
                 participant.userId());
     }
@@ -158,13 +165,21 @@ public class CollaborationService {
             return;
         }
         String elementId = payload.path("elementId").asText();
-        String elementType = payload.path("elementType").asText();
-        String state = payload.path("state").asText();
         try {
             UUID.fromString(elementId);
         } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException("El elemento seleccionado no es válido.");
         }
+        if (type == DiagramEventType.CLASS_POSITION_PREVIEW) {
+            if (!payload.path("positionX").isNumber() || !payload.path("positionY").isNumber()
+                    || payload.path("positionX").asDouble() < 0 || payload.path("positionY").asDouble() < 0
+                    || payload.path("positionX").asDouble() > 100_000 || payload.path("positionY").asDouble() > 100_000) {
+                throw new IllegalArgumentException("La posición temporal de la clase no es válida.");
+            }
+            return;
+        }
+        String elementType = payload.path("elementType").asText();
+        String state = payload.path("state").asText();
         if (!"CLASS".equals(elementType) || !Set.of("DRAGGING", "IDLE").contains(state)) {
             throw new IllegalArgumentException("La interacción del elemento no es válida.");
         }
