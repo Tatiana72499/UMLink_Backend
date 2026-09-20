@@ -133,6 +133,23 @@ class UmlInterchangeServiceTest {
     }
 
     @Test
+    void importsZeroToManyPlantUmlCardinality() {
+        String plantUml = """
+                @startuml
+                class Usuario
+                class Mascota
+                Usuario "1" -- "0..*" Mascota : registra
+                @enduml
+                """;
+
+        UmlInterchangeService.ImportedDiagram imported = service.parse(plantUml.getBytes(StandardCharsets.UTF_8), "mascotas.puml");
+
+        assertThat(imported.relations()).singleElement().satisfies(relation -> {
+            assertThat(relation.sourceCardinality()).isEqualTo("1..1");
+            assertThat(relation.targetCardinality()).isEqualTo("0..*");
+        });
+    }
+    @Test
     void importsCommonAiAttributeVariants() {
         String plantUml = """
                 @startuml
@@ -221,5 +238,24 @@ class UmlInterchangeServiceTest {
         String script = new String(service.export(details, InterchangeFormat.EA_SCRIPT), StandardCharsets.UTF_8);
 
         assertThat(script).contains("Repository.GetTreeSelectedPackage()", "targetPackage.Elements.AddNew(name, \"Class\")", "diagram.DiagramObjects.AddNew", "source.Connectors.AddNew(name, type)", "connector.ClientEnd.Cardinality = sourceCardinality", "diagram.DiagramLinks.AddNew", "\"Usuario\"", "\"1..*\"");
+    }    @Test
+    void importsNavigableRecursiveAssociationWithoutTurningItIntoDependency() {
+        String plantUml = """
+                @startuml
+                class Mascota
+                Mascota "0..1" --> "0..*" Mascota : tiene como padre/madre
+                @enduml
+                """;
+
+        UmlInterchangeService.ImportedDiagram imported = service.parse(plantUml.getBytes(StandardCharsets.UTF_8), "mascota.puml");
+
+        assertThat(imported.relations()).singleElement().satisfies(relation -> {
+            assertThat(relation.type()).isEqualTo(RelationType.ASSOCIATION);
+            assertThat(relation.sourceKey()).isEqualTo("Mascota");
+            assertThat(relation.targetKey()).isEqualTo("Mascota");
+            assertThat(relation.sourceCardinality()).isEqualTo("0..1");
+            assertThat(relation.targetCardinality()).isEqualTo("0..*");
+        });
     }
+
 }

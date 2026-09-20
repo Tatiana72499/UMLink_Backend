@@ -2,6 +2,7 @@ package com.examensw1.umlcollab.features.diagram.controller;
 
 import com.examensw1.umlcollab.features.diagram.dto.*;
 import com.examensw1.umlcollab.features.diagram.service.DiagramService;
+import com.examensw1.umlcollab.features.diagram.service.DiagramAssistantService;
 import com.examensw1.umlcollab.features.diagram.model.InterchangeFormat;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -18,9 +19,11 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController @Validated @RequestMapping("/api") @RequiredArgsConstructor
 public class DiagramController {
     private final DiagramService service;
+    private final DiagramAssistantService assistantService;
     @PostMapping("/projects/{projectId}/diagrams") @ResponseStatus(HttpStatus.CREATED) public DiagramResponse createDiagram(@PathVariable UUID projectId, @Valid @RequestBody CreateDiagramRequest request) { return service.createDiagram(projectId, request); }
     @GetMapping("/projects/{projectId}/diagrams") public List<DiagramResponse> listDiagrams(@PathVariable UUID projectId) { return service.findByProject(projectId); }
     @GetMapping("/diagrams/{diagramId}") public DiagramDetailsResponse getDiagram(@PathVariable UUID diagramId) { return service.getDetails(diagramId); }
+    @PostMapping("/diagrams/{diagramId}/assistant/commands") public AssistantCommandResponse executeAssistant(@PathVariable UUID diagramId, @Valid @RequestBody ExecuteAssistantCommandRequest request) { return assistantService.execute(diagramId, request); }
     @GetMapping("/diagrams/{diagramId}/export") public ResponseEntity<byte[]> exportDiagram(@PathVariable UUID diagramId, @RequestParam InterchangeFormat format) {
         String extension = format == InterchangeFormat.XML ? "xml" : format == InterchangeFormat.EA_SCRIPT ? "js" : format == InterchangeFormat.PLANT_UML ? "puml" : "xmi";
         MediaType contentType = format == InterchangeFormat.EA_SCRIPT ? MediaType.parseMediaType("application/javascript") : format == InterchangeFormat.PLANT_UML ? MediaType.TEXT_PLAIN : MediaType.APPLICATION_XML;
@@ -40,6 +43,7 @@ public class DiagramController {
     @DeleteMapping("/classes/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void deleteClass(@PathVariable UUID id) { service.deleteClass(id); }
     @PostMapping("/classes/{classId}/attributes") @ResponseStatus(HttpStatus.CREATED) public UmlAttributeResponse createAttribute(@PathVariable UUID classId, @Valid @RequestBody CreateAttributeRequest request) { return service.createAttribute(classId, request); }
     @PutMapping("/attributes/{id}") public UmlAttributeResponse updateAttribute(@PathVariable UUID id, @Valid @RequestBody UpdateAttributeRequest request) { return service.updateAttribute(id, request); }
+    @PutMapping("/classes/{classId}/attributes/order") public List<UmlAttributeResponse> reorderAttributes(@PathVariable UUID classId, @Valid @RequestBody UpdateAttributeOrderRequest request) { return service.reorderAttributes(classId, request); }
     @DeleteMapping("/attributes/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) public void deleteAttribute(@PathVariable UUID id) { service.deleteAttribute(id); }
     @PostMapping("/classes/{classId}/operations") @ResponseStatus(HttpStatus.CREATED) public UmlOperationResponse createOperation(@PathVariable UUID classId, @Valid @RequestBody CreateUmlOperationRequest request) { return service.createOperation(classId, request); }
     @PutMapping("/operations/{id}") public UmlOperationResponse updateOperation(@PathVariable UUID id, @Valid @RequestBody UpdateUmlOperationRequest request) { return service.updateOperation(id, request); }

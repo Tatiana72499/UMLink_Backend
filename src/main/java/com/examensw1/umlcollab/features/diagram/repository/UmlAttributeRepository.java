@@ -5,4 +5,5 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 public interface UmlAttributeRepository extends JpaRepository<UmlAttribute, UUID> {
     List<UmlAttribute> findByUmlClassId(UUID umlClassId);
+    List<UmlAttribute> findByUmlClassIdOrderByPrimaryKeyDescAttributeOrderAsc(UUID umlClassId);
 }

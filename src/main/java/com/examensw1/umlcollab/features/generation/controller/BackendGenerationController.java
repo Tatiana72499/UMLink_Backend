@@ -1,6 +1,7 @@
 package com.examensw1.umlcollab.features.generation.controller;
 
 import com.examensw1.umlcollab.features.generation.service.BackendGenerationService;
+import com.examensw1.umlcollab.features.generation.service.FlutterGenerationService;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
@@ -16,10 +17,19 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class BackendGenerationController {
     private final BackendGenerationService service;
+    private final FlutterGenerationService flutterGenerationService;
 
     @GetMapping("/backend")
     public ResponseEntity<byte[]> generate(@PathVariable UUID diagramId) {
         BackendGenerationService.GeneratedBackend artifact = service.generate(diagramId);
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType("application/zip"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + artifact.fileName())
+                .body(artifact.content());
+    }
+
+    @GetMapping("/flutter")
+    public ResponseEntity<byte[]> generateFlutter(@PathVariable UUID diagramId) {
+        FlutterGenerationService.GeneratedFlutter artifact = flutterGenerationService.generate(diagramId);
         return ResponseEntity.ok().contentType(MediaType.parseMediaType("application/zip"))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + artifact.fileName())
                 .body(artifact.content());

@@ -1,0 +1,1 @@
+ALTER TABLE diagram_drawings ADD COLUMN stroke_color VARCHAR(7) NOT NULL DEFAULT '#315B85';

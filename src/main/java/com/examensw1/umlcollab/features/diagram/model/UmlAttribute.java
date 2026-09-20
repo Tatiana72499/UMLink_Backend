@@ -12,4 +12,5 @@ public class UmlAttribute {
     @Column(name = "data_type", nullable = false, length = 80) private String dataType;
     @Column(nullable = false, length = 20) private String visibility = "PRIVATE";
     @Column(name = "is_primary_key", nullable = false) private boolean primaryKey;
+    @Column(name = "attribute_order", nullable = false) private int attributeOrder;
 }

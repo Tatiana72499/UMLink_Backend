@@ -16,7 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 @RequiredArgsConstructor
 public class DiagramImageAnalysisService {
-    private static final int MAX_IMAGE_SIZE = 2_000_000;
+    private static final int MAX_IMAGE_SIZE = 8_000_000;
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of("image/png", "image/jpeg", "image/webp");
 
     private final ProjectService projectService;
@@ -36,7 +36,7 @@ public class DiagramImageAnalysisService {
 
     private void validateImage(byte[] image, String contentType) {
         if (image == null || image.length == 0) throw new IllegalArgumentException("Selecciona una imagen PNG, JPG o WEBP con contenido.");
-        if (image.length > MAX_IMAGE_SIZE) throw new IllegalArgumentException("La imagen supera el límite de 2 MB permitido para el análisis por IA.");
+        if (image.length > MAX_IMAGE_SIZE) throw new IllegalArgumentException("La imagen supera el límite de 8 MB permitido para el análisis por IA.");
         if (contentType == null || !ALLOWED_CONTENT_TYPES.contains(contentType.toLowerCase(Locale.ROOT))) {
             throw new IllegalArgumentException("El archivo seleccionado no es una imagen PNG, JPG o WEBP compatible.");
         }
