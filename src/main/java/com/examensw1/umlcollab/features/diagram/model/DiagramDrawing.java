@@ -30,6 +30,9 @@ public class DiagramDrawing {
     @Column(name = "svg_path", nullable = false, columnDefinition = "TEXT")
     private String svgPath;
 
+    @Column(name = "stroke_color", nullable = false, length = 7)
+    private String strokeColor = "#315B85";
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

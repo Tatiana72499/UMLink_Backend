@@ -79,13 +79,18 @@ public class UmlInterchangeService {
         }
         if (classes.isEmpty()) throw new IllegalArgumentException("El archivo PlantUML no contiene clases compatibles.");
         List<ImportedRelation> relations = new ArrayList<>();
-        java.util.regex.Pattern relationPattern = java.util.regex.Pattern.compile("(?m)^\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(?:\\\"(1\\.\\.1|0\\.\\.1|1\\.\\.\\*)\\\"\\s*)?(<\\|\\.\\.|<\\|--|\\*--|o--|\\.\\.>|-->|--)\\s*(?:\\\"(1\\.\\.1|0\\.\\.1|1\\.\\.\\*)\\\"\\s*)?([A-Za-z_][A-Za-z0-9_]*)(?:\\s*:\\s*(.+))?\\s*$");
+        java.util.regex.Pattern relationPattern = java.util.regex.Pattern.compile("(?m)^\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(?:\\\"(1|1\\.\\.1|0\\.\\.1|1\\.\\.\\*|0\\.\\.\\*)\\\"\\s*)?(<\\|\\.\\.|<\\|--|\\*--|o--|\\.\\.>|-->|->|--)\\s*(?:\\\"(1|1\\.\\.1|0\\.\\.1|1\\.\\.\\*|0\\.\\.\\*)\\\"\\s*)?([A-Za-z_][A-Za-z0-9_]*)(?:\\s*:\\s*(.+))?\\s*$");
         java.util.regex.Matcher relationMatcher = relationPattern.matcher(text);
         while (relationMatcher.find()) {
             String left = relationMatcher.group(1);
             String right = relationMatcher.group(5);
             String arrow = relationMatcher.group(3);
             RelationType type = plantUmlRelationType(arrow);
+            // Una autorrelación solo es válida aquí como asociación, agregación o composición.
+            // Algunos modelos de visión usan por error una flecha de dependencia para un bucle.
+            if (left.equals(right) && (type == RelationType.GENERALIZATION || type == RelationType.REALIZATION || type == RelationType.DEPENDENCY)) {
+                type = RelationType.ASSOCIATION;
+            }
             String source = (type == RelationType.GENERALIZATION || type == RelationType.REALIZATION) ? right : left;
             String target = (type == RelationType.GENERALIZATION || type == RelationType.REALIZATION) ? left : right;
             String sourceCardinality = supportsPlantUmlCardinality(type) ? defaultCardinality(relationMatcher.group(2)) : null;
@@ -154,13 +159,14 @@ public class UmlInterchangeService {
             case "o--" -> RelationType.AGGREGATION;
             case "<|--" -> RelationType.GENERALIZATION;
             case "<|.." -> RelationType.REALIZATION;
-            case "..>", "-->" -> RelationType.DEPENDENCY;
+            case "..>" -> RelationType.DEPENDENCY;
+            case "-->", "->" -> RelationType.ASSOCIATION;
             default -> RelationType.ASSOCIATION;
         };
     }
 
     private boolean supportsPlantUmlCardinality(RelationType type) { return type == RelationType.ASSOCIATION || type == RelationType.AGGREGATION || type == RelationType.COMPOSITION; }
-    private String defaultCardinality(String value) { return value == null ? "1..1" : value; }
+    private String defaultCardinality(String value) { return value == null || "1".equals(value) ? "1..1" : value; }
     private String optionalPlantUmlLabel(String value) { return value == null || value.isBlank() ? null : value.trim(); }
     private String plantUmlImportedVisibility(String value) { return "-".equals(value) ? "PRIVATE" : "#".equals(value) ? "PROTECTED" : "PUBLIC"; }
 
@@ -394,7 +400,7 @@ public class UmlInterchangeService {
                 function main() {
                     var parentPackage = Repository.GetTreeSelectedPackage();
                     if (parentPackage == null) {
-                        Session.Prompt("Selecciona un paquete destino en el navegador de Enterprise Architect y vuelve a ejecutar el script.", promptOK);
+                        Session.Output("Selecciona un paquete destino en el navegador de Enterprise Architect y vuelve a ejecutar el script.");
                         return;
                     }
 
@@ -492,7 +498,7 @@ public class UmlInterchangeService {
         return script.append("""
                     diagram.Update();
                     Repository.ReloadDiagram(diagram.DiagramID);
-                    Session.Prompt("Diagrama importado correctamente: " + diagram.Name, promptOK);
+                    Session.Output("Diagrama importado correctamente: " + diagram.Name);
                 }
 
                 main();
@@ -584,7 +590,7 @@ public class UmlInterchangeService {
     private String xmiConnectorCardinality(Element role) { if (role == null) return "1..1"; return xmiCardinality(role); }
     private RelationType eaConnectorRelationType(Element properties, Element sourceType) { String connectorType = value(properties, "ea_type", "Association"); if ("Generalization".equalsIgnoreCase(connectorType)) return RelationType.GENERALIZATION; if ("Realisation".equalsIgnoreCase(connectorType) || "Realization".equalsIgnoreCase(connectorType)) return RelationType.REALIZATION; if ("Dependency".equalsIgnoreCase(connectorType)) return RelationType.DEPENDENCY; String aggregation = value(sourceType, "aggregation", "none"); return "composite".equalsIgnoreCase(aggregation) ? RelationType.COMPOSITION : "shared".equalsIgnoreCase(aggregation) ? RelationType.AGGREGATION : RelationType.ASSOCIATION; }
     private String xmiVisibility(Element item) { String value = value(item, "visibility", "public"); return switch (value.toLowerCase(Locale.ROOT)) { case "private" -> "PRIVATE"; case "protected" -> "PROTECTED"; default -> "PUBLIC"; }; }
-    private String xmiCardinality(Element item) { String multiplicity = optional(item, "multiplicity"); if (multiplicity != null) return switch (multiplicity) { case "1", "1..1" -> "1..1"; case "0..1" -> "0..1"; case "1..*", "1..n" -> "1..*"; default -> throw new IllegalArgumentException("La cardinalidad XMI " + multiplicity + " no está soportada. Usa 1..1, 0..1 o 1..*."); }; String lower = value(item, "lower", "1"); String upper = value(item, "upper", "1"); if ("1".equals(lower) && "1".equals(upper)) return "1..1"; if ("0".equals(lower) && "1".equals(upper)) return "0..1"; if ("1".equals(lower) && "*".equals(upper)) return "1..*"; throw new IllegalArgumentException("La cardinalidad XMI " + lower + ".." + upper + " no está soportada. Usa 1..1, 0..1 o 1..*."); }
+    private String xmiCardinality(Element item) { String multiplicity = optional(item, "multiplicity"); if (multiplicity != null) return switch (multiplicity) { case "1", "1..1" -> "1..1"; case "0..1" -> "0..1"; case "1..*", "1..n" -> "1..*"; case "0..*", "0..n" -> "0..*"; default -> throw new IllegalArgumentException("La cardinalidad XMI " + multiplicity + " no está soportada. Usa 1..1, 0..1, 1..* o 0..*."); }; String lower = value(item, "lower", "1"); String upper = value(item, "upper", "1"); if ("0".equals(lower) && "*".equals(upper)) return "0..*"; if ("1".equals(lower) && "1".equals(upper)) return "1..1"; if ("0".equals(lower) && "1".equals(upper)) return "0..1"; if ("1".equals(lower) && "*".equals(upper)) return "1..*"; throw new IllegalArgumentException("La cardinalidad XMI " + lower + ".." + upper + " no está soportada. Usa 1..1, 0..1, 1..* o 0..*."); }
     private RelationType associationType(List<Element> ends) { String aggregation = value(ends.get(0), "aggregation", "none"); return "composite".equals(aggregation) ? RelationType.COMPOSITION : "shared".equals(aggregation) ? RelationType.AGGREGATION : RelationType.ASSOCIATION; }
     private RelationType relationType(String value) { try { return RelationType.valueOf(value.toUpperCase(Locale.ROOT)); } catch (RuntimeException ex) { throw new IllegalArgumentException("El archivo contiene un tipo de relación UML no compatible: " + value); } }
     private String normalizeType(String value) { String raw = value == null ? "" : value; String normalized = raw.substring(Math.max(raw.lastIndexOf(':'), raw.lastIndexOf('.')) + 1).toLowerCase(Locale.ROOT); return switch (normalized) { case "string" -> "String"; case "integer", "int" -> "Integer"; case "long" -> "Long"; case "double", "float", "real" -> "Double"; case "boolean", "bool" -> "Boolean"; case "uuid" -> "UUID"; case "localdate", "date" -> "LocalDate"; case "localdatetime", "datetime" -> "LocalDateTime"; case "void", "" -> "void"; default -> "String"; }; }
@@ -609,8 +615,8 @@ public class UmlInterchangeService {
     private String eaPackageId(Object id) { return "EAPK_" + id.toString().replace('-', '_').toUpperCase(Locale.ROOT); }
     private String eaDiagramId(Object id) { return "EAID_DIAGRAM_" + id.toString().replace('-', '_').toUpperCase(Locale.ROOT); }
     private String visibility(String value) { return value == null ? "public" : value.toLowerCase(Locale.ROOT); }
-    private String lower(String value) { return "0..1".equals(value) ? "0" : "1"; }
-    private String upper(String value) { return "1..*".equals(value) ? "*" : "1"; }
+    private String lower(String value) { return ("0..1".equals(value) || "0..*".equals(value)) ? "0" : "1"; }
+    private String upper(String value) { return ("1..*".equals(value) || "0..*".equals(value)) ? "*" : "1"; }
     private String aggregation(RelationType type) { return type == RelationType.COMPOSITION ? "composite" : type == RelationType.AGGREGATION ? "shared" : "none"; }
     private String eaConnectorType(RelationType type) { return switch (type) { case GENERALIZATION -> "Generalization"; case REALIZATION -> "Realisation"; case DEPENDENCY -> "Dependency"; case AGGREGATION, COMPOSITION, ASSOCIATION -> "Association"; }; }
 

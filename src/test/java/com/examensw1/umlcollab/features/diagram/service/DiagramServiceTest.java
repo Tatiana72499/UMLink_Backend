@@ -127,9 +127,9 @@ class DiagramServiceTest {
         when(relations.save(any(UmlRelation.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         UmlRelationResponse response = service.updateRelationCardinality(relationId,
-                new UpdateRelationCardinalityRequest("0..1", "1..*"));
+                new UpdateRelationCardinalityRequest("0..*", "1..*"));
 
-        assertEquals("0..1", response.sourceCardinality());
+        assertEquals("0..*", response.sourceCardinality());
         assertEquals("1..*", response.targetCardinality());
     }
 

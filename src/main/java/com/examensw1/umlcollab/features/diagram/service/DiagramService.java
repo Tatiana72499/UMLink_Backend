@@ -105,6 +105,7 @@ public class DiagramService {
         DiagramDrawing drawing = new DiagramDrawing();
         drawing.setDiagramId(diagramId);
         drawing.setSvgPath(request.svgPath());
+        drawing.setStrokeColor(request.strokeColor() == null ? "#315B85" : request.strokeColor());
         DiagramDrawing saved = drawings.save(drawing);
         collaborationService.publishDiagramChanged(diagramId, "agregó un trazo");
         return toResponse(saved);
@@ -141,7 +142,7 @@ public class DiagramService {
         log.info("Clase UML eliminada: {}", id);
     }
     @Transactional public UmlAttributeResponse createAttribute(UUID classId, CreateAttributeRequest request) {
-        UmlClass umlClass = findClass(classId); UmlAttribute attribute = new UmlAttribute(); attribute.setUmlClassId(classId); attribute.setName(request.name()); attribute.setDataType(request.dataType().displayName()); attribute.setVisibility(request.visibility() == null ? "PRIVATE" : request.visibility());
+        UmlClass umlClass = findClass(classId); UmlAttribute attribute = new UmlAttribute(); attribute.setUmlClassId(classId); attribute.setName(request.name()); attribute.setDataType(request.dataType().displayName()); attribute.setVisibility(request.visibility() == null ? "PRIVATE" : request.visibility()); attribute.setAttributeOrder(nextAttributeOrder(classId));
         if (request.primaryKey()) clearPrimaryKey(classId, null);
         attribute.setPrimaryKey(request.primaryKey());
         UmlAttribute saved = attributes.save(attribute);
@@ -164,6 +165,20 @@ public class DiagramService {
         UmlAttribute attribute = findAttribute(id);
         attributes.delete(attribute);
         collaborationService.publishDiagramChanged(findClass(attribute.getUmlClassId()).getDiagramId(), "eliminó un atributo");
+    }
+    @Transactional public List<UmlAttributeResponse> reorderAttributes(UUID classId, UpdateAttributeOrderRequest request) {
+        UmlClass umlClass = findClass(classId);
+        List<UmlAttribute> existing = attributes.findByUmlClassId(classId);
+        java.util.Set<UUID> expected = existing.stream().map(UmlAttribute::getId).collect(java.util.stream.Collectors.toSet());
+        java.util.Set<UUID> supplied = new java.util.LinkedHashSet<>(request.attributeIds());
+        if (supplied.size() != request.attributeIds().size() || !supplied.equals(expected)) {
+            throw new IllegalArgumentException("El orden debe incluir cada atributo de la clase exactamente una vez.");
+        }
+        Map<UUID, UmlAttribute> byId = existing.stream().collect(java.util.stream.Collectors.toMap(UmlAttribute::getId, item -> item));
+        for (int index = 0; index < request.attributeIds().size(); index++) byId.get(request.attributeIds().get(index)).setAttributeOrder(index);
+        attributes.saveAll(existing);
+        collaborationService.publishDiagramChanged(umlClass.getDiagramId(), "reordenó atributos");
+        return attributes.findByUmlClassIdOrderByPrimaryKeyDescAttributeOrderAsc(classId).stream().map(this::toResponse).toList();
     }
     @Transactional public UmlOperationResponse createOperation(UUID classId, CreateUmlOperationRequest request) {
         UmlClass umlClass = findClass(classId);
@@ -278,13 +293,15 @@ public class DiagramService {
         if (importedClass.attributes().stream().filter(UmlInterchangeService.ImportedAttribute::primaryKey).count() > 1) {
             throw new IllegalArgumentException("Una clase importada solo puede tener una llave primaria.");
         }
-        for (UmlInterchangeService.ImportedAttribute item : importedClass.attributes()) {
+        for (int index = 0; index < importedClass.attributes().size(); index++) {
+            UmlInterchangeService.ImportedAttribute item = importedClass.attributes().get(index);
             UmlAttribute attribute = new UmlAttribute();
             attribute.setUmlClassId(classId);
             attribute.setName(item.name().trim());
             attribute.setDataType(attributeType(item.dataType()).displayName());
             attribute.setVisibility(visibility(item.visibility()));
             attribute.setPrimaryKey(item.primaryKey());
+            attribute.setAttributeOrder(index);
             attributes.save(attribute);
         }
         for (UmlInterchangeService.ImportedOperation item : importedClass.operations()) {
@@ -428,8 +445,8 @@ public class DiagramService {
         }
     }
     private void validateCardinality(String cardinality) {
-        if (!List.of("1..1", "0..1", "1..*").contains(cardinality)) {
-            throw new IllegalArgumentException("La cardinalidad debe ser 1..1, 0..1 o 1..*.");
+        if (!List.of("1..1", "0..1", "1..*", "0..*").contains(cardinality)) {
+            throw new IllegalArgumentException("La cardinalidad debe ser 1..1, 0..1, 1..* o 0..*.");
         }
     }
     private boolean supportsLabel(RelationType type) { return type == RelationType.ASSOCIATION || type == RelationType.AGGREGATION || type == RelationType.COMPOSITION || type == RelationType.DEPENDENCY; }
@@ -444,10 +461,11 @@ public class DiagramService {
         catch (JsonProcessingException exception) { throw new IllegalStateException("No se pudieron leer los puntos de alineación.", exception); }
     }
     private DiagramResponse toResponse(Diagram item) { return new DiagramResponse(item.getId(), item.getProjectId(), item.getName(), item.getVersion(), item.getCreatedAt()); }
-    private DiagramDrawingResponse toResponse(DiagramDrawing item) { return new DiagramDrawingResponse(item.getId(), item.getSvgPath()); }
+    private DiagramDrawingResponse toResponse(DiagramDrawing item) { return new DiagramDrawingResponse(item.getId(), item.getSvgPath(), item.getStrokeColor()); }
     private boolean supportsCardinality(RelationType type) { return type == RelationType.ASSOCIATION || type == RelationType.AGGREGATION || type == RelationType.COMPOSITION; }
-    private UmlClassResponse toResponse(UmlClass item) { return new UmlClassResponse(item.getId(), item.getDiagramId(), item.getName(), item.getPositionX(), item.getPositionY(), item.getFillColor(), item.getVersion(), attributes.findByUmlClassId(item.getId()).stream().map(this::toResponse).toList(), operations.findByUmlClassId(item.getId()).stream().map(this::toResponse).toList()); }
-    private UmlAttributeResponse toResponse(UmlAttribute item) { return new UmlAttributeResponse(item.getId(), item.getUmlClassId(), item.getName(), item.getDataType(), item.getVisibility(), item.isPrimaryKey()); }
+    private int nextAttributeOrder(UUID classId) { return attributes.findByUmlClassId(classId).stream().mapToInt(UmlAttribute::getAttributeOrder).max().orElse(-1) + 1; }
+    private UmlClassResponse toResponse(UmlClass item) { return new UmlClassResponse(item.getId(), item.getDiagramId(), item.getName(), item.getPositionX(), item.getPositionY(), item.getFillColor(), item.getVersion(), attributes.findByUmlClassIdOrderByPrimaryKeyDescAttributeOrderAsc(item.getId()).stream().map(this::toResponse).toList(), operations.findByUmlClassId(item.getId()).stream().map(this::toResponse).toList()); }
+    private UmlAttributeResponse toResponse(UmlAttribute item) { return new UmlAttributeResponse(item.getId(), item.getUmlClassId(), item.getName(), item.getDataType(), item.getVisibility(), item.isPrimaryKey(), item.getAttributeOrder()); }
     private UmlOperationResponse toResponse(UmlOperation item) { return new UmlOperationResponse(item.getId(), item.getUmlClassId(), item.getName(), item.getVisibility(), item.getReturnType(), operationParameters.findByUmlOperationIdOrderByParameterOrderAsc(item.getId()).stream().map(parameter -> new UmlOperationParameterResponse(parameter.getId(), parameter.getName(), parameter.getDataType(), parameter.getParameterOrder())).toList()); }
     private UmlRelationResponse toResponse(UmlRelation item) { return new UmlRelationResponse(item.getId(), item.getDiagramId(), item.getSourceClassId(), item.getTargetClassId(), item.getType(), item.getLabel(), item.getSourceCardinality(), item.getTargetCardinality(), item.getBendX(), item.getBendY(), item.getAssociationClassId(), deserializeAlignmentPoints(item.getAlignmentPoints())); }
 }

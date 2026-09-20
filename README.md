@@ -1,6 +1,6 @@
 # UML Collaboration Backend
 
-Backend inicial para almacenar diagramas UML colaborativos. Usa Java 21, Spring Boot, PostgreSQL, Flyway y WebSocket/STOMP.
+Backend inicial para almacenar diagramas UML colaborativos. Usa Java 25, Spring Boot, PostgreSQL, Flyway y WebSocket/STOMP.
 
 ## Base de datos
 

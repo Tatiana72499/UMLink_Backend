@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.examensw1.umlcollab.features.auth.service.AuthService;
 import com.examensw1.umlcollab.features.generation.service.BackendGenerationService;
+import com.examensw1.umlcollab.features.generation.service.FlutterGenerationService;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,6 +22,7 @@ import org.springframework.test.web.servlet.MockMvc;
 class BackendGenerationControllerTest {
     @Autowired private MockMvc mockMvc;
     @MockitoBean private BackendGenerationService service;
+    @MockitoBean private FlutterGenerationService flutterGenerationService;
     @MockitoBean private AuthService authService;
 
     @Test
@@ -32,5 +34,16 @@ class BackendGenerationControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType("application/zip"))
                 .andExpect(header().string("Content-Disposition", "attachment; filename=biblioteca-backend.zip"));
+    }
+
+    @Test
+    void downloadsGeneratedFlutterAsZip() throws Exception {
+        UUID diagramId = UUID.randomUUID();
+        when(flutterGenerationService.generate(diagramId)).thenReturn(new FlutterGenerationService.GeneratedFlutter("biblioteca-flutter.zip", new byte[] {80, 75}));
+
+        mockMvc.perform(get("/api/diagrams/{diagramId}/generate/flutter", diagramId))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("application/zip"))
+                .andExpect(header().string("Content-Disposition", "attachment; filename=biblioteca-flutter.zip"));
     }
 }
