@@ -1,0 +1,39 @@
+# Despliegue en EC2. Requiere UMLink_Backend y UMLink_Frontend clonados en la misma carpeta.
+# Uso: docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+services:
+  postgres:
+    restart: unless-stopped
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: uml_collab
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d uml_collab"]
+      interval: 5s
+      retries: 10
+
+  backend:
+    restart: unless-stopped
+    build: .
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/uml_collab
+      DB_USERNAME: postgres
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      JWT_SECRET: ${JWT_SECRET:?define JWT_SECRET (>=32 caracteres)}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?define CORS_ALLOWED_ORIGINS}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  frontend:
+    restart: unless-stopped
+    build: ../UMLink_Frontend
+    environment:
+      BACKEND_URL: http://backend:8080
+    ports: ["80:80"]
+    depends_on: [backend]
+
+volumes:
+  pgdata:
