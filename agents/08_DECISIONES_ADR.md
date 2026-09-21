@@ -84,3 +84,10 @@ Las decisiones significativas deben registrarse aquí. Una ADR no tiene que ser 
 - **Contexto:** las operaciones definidas por una persona en el diagrama deben conservarse al generar el backend, pero UML no describe por sí solo la regla de negocio.
 - **Decisión:** mantener CRUD para cada clase y generar por cada operación UML un endpoint POST tipado, con DTO validado si recibe parámetros, que delega a un método del service. El stub verifica la existencia de la entidad y responde 501 NOT_IMPLEMENTED hasta que se programe su implementación.
 - **Consecuencias:** el código no inventa comportamientos de dominio ni aparenta que la operación esté terminada; una operación con el mismo nombre normalizado que otra de la misma clase se rechaza al generar para evitar rutas ambiguas.
+
+## ADR-011 — Vista compartida pública mediante token opaco
+
+- **Estado:** aceptada.
+- **Contexto:** se necesita que una persona sin cuenta pueda consultar un proyecto compartido sin exponer el UUID interno del proyecto ni relajar permisos de edición.
+- **Decisión:** cada proyecto recibe un UUID aleatorio `publicShareToken`, único y no actualizable. Solo el `OWNER` puede obtenerlo; los `GET /api/shared/projects/{shareToken}` devuelven proyecto, diagramas y detalle de diagrama en modo solo lectura. Las mutaciones, WebSocket, exportaciones, generación y administración de miembros no se publican.
+- **Consecuencias:** el enlace funciona como credencial de portador y debe compartirse solo con destinatarios autorizados. Consultarlo no crea usuario ni membresía; para editar se exige autenticación y rol `EDITOR` o `OWNER`. Una futura rotación/revocación de token deberá invalidar el enlace anterior.

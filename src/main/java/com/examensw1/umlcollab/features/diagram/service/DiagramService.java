@@ -10,6 +10,7 @@ import com.examensw1.umlcollab.features.diagram.dto.*;
 import com.examensw1.umlcollab.features.diagram.model.*;
 import com.examensw1.umlcollab.features.diagram.repository.*;
 import com.examensw1.umlcollab.features.project.service.ProjectService;
+import com.examensw1.umlcollab.features.project.model.Project;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -39,6 +40,14 @@ public class DiagramService {
         Diagram saved = diagrams.save(diagram); log.info("Diagrama creado: {}", saved.getId()); return toResponse(saved);
     }
     public List<DiagramResponse> findByProject(UUID projectId) { projectService.findEntity(projectId); return diagrams.findByProjectId(projectId).stream().map(this::toResponse).toList(); }
+
+    /** Lists only the diagrams reachable through a valid shared-link token. */
+    @Transactional(readOnly = true)
+    public List<DiagramResponse> findSharedByToken(UUID shareToken) {
+        Project project = projectService.findSharedEntity(shareToken);
+        return diagrams.findByProjectId(project.getId()).stream().map(this::toResponse).toList();
+    }
+
     @Transactional public DiagramResponse updateDiagram(UUID diagramId, UpdateDiagramRequest request) {
         Diagram diagram = findDiagram(diagramId);
         verifyExpectedVersion("El diagrama", diagram.getVersion(), request.version());
@@ -57,7 +66,21 @@ public class DiagramService {
     public DiagramDetailsResponse getDetails(UUID diagramId) {
         Diagram diagram = diagrams.findById(diagramId).orElseThrow(() -> new ResourceNotFoundException("Diagrama", diagramId));
         projectService.findEntity(diagram.getProjectId());
-        return new DiagramDetailsResponse(toResponse(diagram), classes.findByDiagramId(diagramId).stream().map(this::toResponse).toList(), relations.findByDiagramId(diagramId).stream().map(this::toResponse).toList(), drawings.findByDiagramIdOrderByCreatedAtAsc(diagramId).stream().map(this::toResponse).toList());
+        return toDetails(diagram);
+    }
+
+    /**
+     * Returns a diagram only when it belongs to the project resolved from the
+     * opaque token in the public URL. It exposes no mutation capability.
+     */
+    @Transactional(readOnly = true)
+    public DiagramDetailsResponse getSharedDetails(UUID shareToken, UUID diagramId) {
+        Project project = projectService.findSharedEntity(shareToken);
+        Diagram diagram = diagrams.findById(diagramId).orElseThrow(() -> new ResourceNotFoundException("Diagrama", diagramId));
+        if (!project.getId().equals(diagram.getProjectId())) {
+            throw new ResourceNotFoundException("Diagrama", diagramId);
+        }
+        return toDetails(diagram);
     }
     public byte[] exportDiagram(UUID diagramId, InterchangeFormat format) {
         Diagram diagram = diagrams.findById(diagramId).orElseThrow(() -> new ResourceNotFoundException("Diagrama", diagramId));
@@ -275,6 +298,11 @@ public class DiagramService {
         Diagram diagram = diagrams.findById(id).orElseThrow(() -> new ResourceNotFoundException("Diagrama", id));
         projectService.findEditableEntity(diagram.getProjectId());
         return diagram;
+    }
+
+    private DiagramDetailsResponse toDetails(Diagram diagram) {
+        UUID diagramId = diagram.getId();
+        return new DiagramDetailsResponse(toResponse(diagram), classes.findByDiagramId(diagramId).stream().map(this::toResponse).toList(), relations.findByDiagramId(diagramId).stream().map(this::toResponse).toList(), drawings.findByDiagramIdOrderByCreatedAtAsc(diagramId).stream().map(this::toResponse).toList());
     }
     private void verifyExpectedVersion(String resource, Long actualVersion, Long expectedVersion) {
         if (!expectedVersion.equals(actualVersion)) throw new VersionConflictException(resource);

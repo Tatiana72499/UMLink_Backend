@@ -14,7 +14,12 @@ public class Project {
     @Column(length = 500) private String description;
     @Column(name = "owner_name", nullable = false, length = 120) private String ownerName;
     @Column(name = "owner_id") private UUID ownerId;
+    @Column(name = "public_share_token", nullable = false, unique = true, updatable = false)
+    private UUID publicShareToken;
     @Version private Long version;
     @Column(name = "created_at", nullable = false, updatable = false) private Instant createdAt;
-    @PrePersist void created() { createdAt = Instant.now(); }
+    @PrePersist void created() {
+        createdAt = Instant.now();
+        if (publicShareToken == null) publicShareToken = UUID.randomUUID();
+    }
 }

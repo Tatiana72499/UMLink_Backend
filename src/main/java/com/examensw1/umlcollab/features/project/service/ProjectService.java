@@ -9,6 +9,7 @@ import com.examensw1.umlcollab.features.project.dto.AddProjectMemberRequest;
 import com.examensw1.umlcollab.features.project.dto.CreateProjectRequest;
 import com.examensw1.umlcollab.features.project.dto.ProjectMemberResponse;
 import com.examensw1.umlcollab.features.project.dto.ProjectResponse;
+import com.examensw1.umlcollab.features.project.dto.ProjectShareLinkResponse;
 import com.examensw1.umlcollab.features.project.dto.UpdateProjectMemberRequest;
 import com.examensw1.umlcollab.features.project.dto.UpdateProjectRequest;
 import com.examensw1.umlcollab.features.project.model.ProjectMember;
@@ -36,6 +37,23 @@ public class ProjectService {
                 .map(this::findWithoutAuthorization).map(this::toResponse).toList();
     }
     public ProjectResponse findById(UUID id) { return toResponse(findEntity(id)); }
+
+    /** A public-link lookup never creates a member or grants modification rights. */
+    @Transactional(readOnly = true)
+    public ProjectResponse findSharedByToken(UUID shareToken) { return toResponse(findSharedEntity(shareToken)); }
+
+    @Transactional(readOnly = true)
+    public Project findSharedEntity(UUID shareToken) {
+        return repository.findByPublicShareToken(shareToken)
+                .orElseThrow(() -> new ResourceNotFoundException("Enlace compartido", shareToken));
+    }
+
+    @Transactional(readOnly = true)
+    public ProjectShareLinkResponse getShareLink(UUID projectId) {
+        Project project = findOwnedEntity(projectId);
+        return new ProjectShareLinkResponse(project.getPublicShareToken());
+    }
+
     public Project findEntity(UUID id) {
         Project project = findWithoutAuthorization(id);
         requireRole(project, currentUserService.requireCurrentUser(), ProjectRole.VIEWER, ProjectRole.EDITOR, ProjectRole.OWNER);

@@ -3,6 +3,7 @@
 ## Principios
 
 - Mínimo privilegio: cada usuario solo puede leer o modificar los proyectos donde es miembro.
+- La excepción de consulta pública usa un token UUID opaco por proyecto, no el UUID interno. Es un secreto de portador y solo habilita `GET /api/shared/**`; nunca membresía, WebSocket, generación, descargas ni mutaciones.
 - Validar toda entrada HTTP, WebSocket, XML y comandos de IA.
 - No confiar en identificadores enviados por el cliente sin comprobar su pertenencia.
 - Devolver errores seguros: nunca exponer trazas, consultas SQL, contraseñas o tokens.

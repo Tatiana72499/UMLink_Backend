@@ -17,6 +17,7 @@ POST   /api/auth/login
 
 GET    /api/projects
 GET    /api/projects/{id}
+GET    /api/projects/{id}/share-link
 POST   /api/projects
 PUT    /api/projects/{id}
 DELETE /api/projects/{id}?version={version}
@@ -57,6 +58,10 @@ POST   /api/diagrams/{diagramId}/association-classes
 PUT    /api/relations/{id}
 PUT    /api/relations/{id}/cardinality
 DELETE /api/relations/{id}
+
+GET    /api/shared/projects/{shareToken}
+GET    /api/shared/projects/{shareToken}/diagrams
+GET    /api/shared/projects/{shareToken}/diagrams/{diagramId}
 ```
 
 ## Autenticación
@@ -69,6 +74,7 @@ DELETE /api/relations/{id}
 - Los errores REST tienen la forma `{ timestamp, status, code, message, fieldErrors }`. Las validaciones usan `VALIDATION_ERROR`, recursos inexistentes `RESOURCE_NOT_FOUND`, reglas de negocio `BUSINESS_RULE_VIOLATION` y concurrencia `VERSION_CONFLICT`.
 - Un proyecto tiene miembros con los roles `OWNER`, `EDITOR` y `VIEWER`. El creador se registra como `OWNER`; su `ownerId` es autoritativo y su membresía siempre se normaliza como `OWNER`. Solo este rol administra integrantes y proyecto. `EDITOR` puede modificar diagramas y `VIEWER` solo puede consultarlos. Las invitaciones usan el correo de una cuenta existente y no admiten el correo del propietario, porque esa persona ya tiene acceso como `OWNER`; un enlace al proyecto no concede acceso por sí solo.
 - La documentación interactiva está disponible en `/swagger-ui.html` y el contrato OpenAPI JSON en `/v3/api-docs`.
+- De forma excepcional, el `OWNER` puede compartir un token UUID opaco mediante `GET /api/projects/{id}/share-link`. Los `GET /api/shared/projects/{shareToken}` son públicos pero solo muestran proyecto, diagramas y detalle de diagrama; no crean membresía, sesión, presencia WebSocket ni permisos. El token es un secreto de portador: debe compartirse solo con personas de confianza. Para editar, la persona debe iniciar sesión o registrarse y recibir el rol `EDITOR` del `OWNER`.
 
 ## Entidades persistidas
 

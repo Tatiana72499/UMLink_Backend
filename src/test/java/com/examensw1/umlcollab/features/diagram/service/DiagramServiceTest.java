@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 import com.examensw1.umlcollab.features.diagram.dto.CreateRelationRequest;
@@ -38,8 +39,10 @@ import com.examensw1.umlcollab.features.diagram.repository.UmlClassRepository;
 import com.examensw1.umlcollab.features.diagram.repository.UmlRelationRepository;
 import com.examensw1.umlcollab.features.diagram.repository.UmlOperationRepository;
 import com.examensw1.umlcollab.features.diagram.repository.UmlOperationParameterRepository;
+import com.examensw1.umlcollab.common.exception.ResourceNotFoundException;
 import com.examensw1.umlcollab.common.exception.VersionConflictException;
 import com.examensw1.umlcollab.features.project.service.ProjectService;
+import com.examensw1.umlcollab.features.project.model.Project;
 import com.examensw1.umlcollab.features.collaboration.service.CollaborationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Optional;
@@ -84,6 +87,44 @@ class DiagramServiceTest {
     private void stubClassesInDiagram() {
         when(classes.findById(sourceClassId)).thenReturn(Optional.of(umlClass(sourceClassId)));
         when(classes.findById(targetClassId)).thenReturn(Optional.of(umlClass(targetClassId)));
+    }
+
+
+    @Test
+    void debeConsultarDetalleCompartidoSoloDentroDelProyectoDelToken() {
+        UUID shareToken = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        Project project = new Project();
+        project.setId(projectId);
+        Diagram diagram = new Diagram();
+        diagram.setId(diagramId);
+        diagram.setProjectId(projectId);
+        when(projects.findSharedEntity(shareToken)).thenReturn(project);
+        when(diagrams.findById(diagramId)).thenReturn(Optional.of(diagram));
+        when(classes.findByDiagramId(diagramId)).thenReturn(List.of());
+        when(relations.findByDiagramId(diagramId)).thenReturn(List.of());
+        when(drawings.findByDiagramIdOrderByCreatedAtAsc(diagramId)).thenReturn(List.of());
+
+        var response = service.getSharedDetails(shareToken, diagramId);
+
+        assertEquals(diagramId, response.diagram().id());
+        verify(projects).findSharedEntity(shareToken);
+        verify(projects, never()).findEntity(projectId);
+    }
+
+    @Test
+    void debeRechazarUnDiagramaQueNoPerteneceAlEnlaceCompartido() {
+        UUID shareToken = UUID.randomUUID();
+        Project project = new Project();
+        project.setId(UUID.randomUUID());
+        Diagram diagram = new Diagram();
+        diagram.setId(diagramId);
+        diagram.setProjectId(UUID.randomUUID());
+        when(projects.findSharedEntity(shareToken)).thenReturn(project);
+        when(diagrams.findById(diagramId)).thenReturn(Optional.of(diagram));
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.getSharedDetails(shareToken, diagramId));
     }
 
     @Test

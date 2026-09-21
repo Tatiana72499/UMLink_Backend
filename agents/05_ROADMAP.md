@@ -34,6 +34,7 @@ Los checks reflejan únicamente elementos comprobados en el código actual.
 - [x] Difundir cambios por cada diagrama, no por un tópico global.
 - [x] Implementar control de versiones y respuesta `409 Conflict`.
 - [x] Agregar miembros de proyecto y roles (`OWNER`, `EDITOR`, `VIEWER`) con autorización REST y WebSocket.
+- [x] Compartir proyectos mediante enlace opaco de solo lectura sin crear membresía; la edición continúa requiriendo sesión y rol `EDITOR` o `OWNER`.
 - [x] Persistir y difundir trazos de lápiz por diagrama para los miembros con permiso de edición.
 - [x] Previsualizar trazos, resaltar clases arrastradas y comunicar actividad remota contextual mediante eventos WebSocket efímeros autorizados.
 

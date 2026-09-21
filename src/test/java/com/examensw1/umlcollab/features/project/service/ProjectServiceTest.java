@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.examensw1.umlcollab.common.exception.ResourceNotFoundException;
@@ -57,6 +58,21 @@ class ProjectServiceTest {
         assertEquals(user.getId(), captor.getValue().getOwnerId());
         assertEquals(user.getName(), captor.getValue().getOwnerName());
     }
+
+    @Test
+    void debeConsultarProyectoCompartidoSinSolicitarUnaSesion() {
+        UUID shareToken = UUID.randomUUID();
+        Project project = project(UUID.randomUUID());
+        project.setName("Biblioteca");
+        project.setPublicShareToken(shareToken);
+        when(repository.findByPublicShareToken(shareToken)).thenReturn(Optional.of(project));
+
+        var response = service.findSharedByToken(shareToken);
+
+        assertEquals("Biblioteca", response.name());
+        verifyNoInteractions(currentUserService, members, users);
+    }
+
 
     @Test
     void debeOcultarProyectoQueNoPerteneceAlUsuarioAutenticado() {

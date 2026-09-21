@@ -18,6 +18,7 @@ public class ProjectController {
     private final ProjectService service;
     @GetMapping public List<ProjectResponse> findAll() { return service.findAll(); }
     @GetMapping("/{id}") public ProjectResponse findById(@PathVariable UUID id) { return service.findById(id); }
+    @GetMapping("/{id}/share-link") public ProjectShareLinkResponse getShareLink(@PathVariable UUID id) { return service.getShareLink(id); }
     @PostMapping @ResponseStatus(HttpStatus.CREATED)
     public ProjectResponse create(@Valid @RequestBody CreateProjectRequest request) { return service.create(request); }
     @PutMapping("/{id}")
