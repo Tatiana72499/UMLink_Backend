@@ -50,7 +50,7 @@ class BackendGenerationServiceTest {
 
         assertThat(generated.fileName()).isEqualTo("biblioteca-backend.zip");
         assertThat(entries).containsKeys("pom.xml", "src/main/resources/db/migration/V1__initial_schema.sql", "src/main/java/com/generated/biblioteca/GeneratedApplication.java", "src/main/java/com/generated/biblioteca/config/CorsConfig.java", "src/main/java/com/generated/biblioteca/common/ApiError.java", "src/main/java/com/generated/biblioteca/common/ApiExceptionHandler.java");
-        assertThat(entries.get("pom.xml")).contains("org.projectlombok", "<java.version>21</java.version>");
+        assertThat(entries.get("pom.xml")).contains("org.projectlombok", "<java.version>21</java.version>", "<lombok.version>1.18.42</lombok.version>");
         assertThat(entries.get("src/main/java/com/generated/biblioteca/config/CorsConfig.java")).contains("allowedOriginPatterns", "addMapping(\"/api/**\")", "allowedMethods(\"GET\", \"POST\", \"PUT\", \"DELETE\", \"OPTIONS\")");
         assertThat(entries.get("src/main/resources/db/migration/V1__initial_schema.sql")).contains("CREATE TABLE libro", "CREATE TABLE estudiante", "titulo VARCHAR(255)", "id INTEGER PRIMARY KEY", "ADD COLUMN libro_id UUID");
         assertThat(entries.get("src/main/java/com/generated/biblioteca/features/libros/model/Libro.java"))

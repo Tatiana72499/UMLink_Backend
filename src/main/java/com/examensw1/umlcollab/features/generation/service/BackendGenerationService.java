@@ -85,7 +85,7 @@ public class BackendGenerationService {
                   <modelVersion>4.0.0</modelVersion>
                   <parent><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-parent</artifactId><version>3.5.4</version></parent>
                   <groupId>%s</groupId><artifactId>%s-backend</artifactId><version>0.0.1-SNAPSHOT</version>
-                  <properties><java.version>21</java.version></properties>
+                  <properties><java.version>21</java.version><lombok.version>1.18.42</lombok.version></properties>
                   <dependencies>
                     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
                     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-jpa</artifactId></dependency>

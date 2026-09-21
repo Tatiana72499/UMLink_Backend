@@ -6,7 +6,7 @@ Los checks reflejan únicamente elementos comprobados en el código actual.
 
 **Estado: completada.**
 
-- [x] Spring Boot 3 / Java 25 con arquitectura por feature: `controller`, `service`, `repository`, `model` y `dto`.
+- [x] Spring Boot 3 / Java 21 con arquitectura por feature: `controller`, `service`, `repository`, `model` y `dto`.
 - [x] PostgreSQL y Flyway con migración inicial de proyectos, diagramas, clases, atributos y relaciones.
 - [x] API REST para crear/listar/consultar proyectos y diagramas.
 - [x] API REST CRUD para clases, atributos y relaciones UML.
@@ -56,13 +56,11 @@ Los checks reflejan únicamente elementos comprobados en el código actual.
 ## Fase 4 — Generación y móvil
 
 - [x] Generar un backend Spring Boot en capas desde el modelo UML como ZIP descargable.
-- [x] Generar endpoints POST y stubs tipados 501 Not Implemented para operaciones UML, sin inventar reglas de negocio.
 - [x] Crear `V1__initial_schema.sql` de Flyway con PostgreSQL dentro del backend generado.
 - [ ] Definir el contrato de transformación UML → backend Spring Boot, PostgreSQL y Flutter.
 - [x] Generar una app Flutter CRUD desde las clases UML válidas, como ZIP descargable.
 - [x] Generar cliente HTTP Flutter y formularios tipados para los endpoints CRUD generados, incluidos selectores para relaciones persistentes.
 - [x] Ampliar los DTO y servicios del backend generado para exponer/actualizar IDs relacionados y validar que las referencias existan; después traducir relaciones persistentes a selectores y navegación Flutter.
-- [x] Permitir que la app Flutter configure durante la sesión la URL de su backend, manteniendo PostgreSQL local o remoto detrás de Spring Boot y fuera del APK.
 - [ ] Incluir configuración opcional de asistente local para Ollama en la app Flutter generada, sin acoplar UMLink a Ollama ni incluir claves.
 - [ ] Crear app móvil con lectura/escritura y sincronización offline.
 
@@ -70,7 +68,7 @@ Los checks reflejan únicamente elementos comprobados en el código actual.
 
 - Cada clase UML válida genera un modelo Dart, servicio REST, listado, formulario de creación/edición y acción de eliminación.
 - Los atributos admitidos son `String`, `Integer`, `Long`, `Double`, `Boolean`, `UUID`, `LocalDate` y `LocalDateTime`; la PK se representa como `id` de solo lectura.
-- La app generada usa `API_BASE_URL` configurable y `package:http`, por lo que el cliente REST funciona en Web, móvil y escritorio. El botón **Servidor local** permite modificar la URL activa durante la sesión sin recompilar. Para Chrome se usa `http://localhost:8081/api`, para emulador Android `http://10.0.2.2:8081/api` y para dispositivo físico la IP local del equipo.
+- La app generada usa `API_BASE_URL` configurable. Para emulador Android se documenta `http://10.0.2.2:8081/api`; para dispositivo físico se usa la IP local del equipo.
 - El backend generado expone `<recurso>Id` o `<recurso>Ids` en sus DTO de creación, actualización y respuesta para relaciones persistentes; el service resuelve y valida esos IDs antes de guardar. Flutter los representa con un selector individual o múltiple obtenido de los recursos relacionados. Herencia, realización y dependencia se documentan para refinamiento manual.
 - Ollama es una integración opcional de la app generada mediante `OLLAMA_BASE_URL` y `OLLAMA_MODEL`; UMLink no se conecta, instala ni depende de Ollama.
 - Los ZIP no se persisten en UMLink y el código generado requiere revisión humana antes de producción.

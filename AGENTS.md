@@ -26,7 +26,7 @@ Antes de modificar código, leer los documentos en `agents/` en este orden:
 
 ## Estado técnico actual
 
-- Backend: Spring Boot 3.5.4 + Java 25 + Maven.
+- Backend: Spring Boot 3.5.4 + Java 21 + Maven.
 - Persistencia: PostgreSQL 18 con Flyway y JPA.
 - Base local: `uml_collab` en `localhost:5432`.
 - Puerto HTTP: `8080`.

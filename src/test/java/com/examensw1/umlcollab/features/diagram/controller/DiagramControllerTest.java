@@ -23,6 +23,7 @@ import com.examensw1.umlcollab.features.diagram.dto.UmlOperationResponse;
 import com.examensw1.umlcollab.features.diagram.model.RelationType;
 import com.examensw1.umlcollab.features.diagram.model.InterchangeFormat;
 import com.examensw1.umlcollab.features.diagram.service.DiagramService;
+import com.examensw1.umlcollab.features.diagram.service.DiagramAssistantService;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -46,6 +47,9 @@ class DiagramControllerTest {
 
     @MockitoBean
     private DiagramService diagramService;
+
+    @MockitoBean
+    private DiagramAssistantService diagramAssistantService;
 
     @MockitoBean
     private AuthService authService;

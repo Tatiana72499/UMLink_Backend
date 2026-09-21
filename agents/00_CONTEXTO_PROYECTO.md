@@ -20,7 +20,7 @@ Solo backend. Consolidar persistencia, API REST, validaciones y colaboración We
 
 ## Decisiones ya tomadas
 
-- Java 25, Spring Boot, PostgreSQL, Flyway, JPA y WebSocket/STOMP.
+- Java 21, Spring Boot, PostgreSQL, Flyway, JPA y WebSocket/STOMP.
 - El servidor es autoritativo: valida operaciones, persiste los cambios y los difunde.
 - El modelo UML en PostgreSQL es la fuente única de verdad.
 - `@Version` se usa como base para detectar ediciones concurrentes.

@@ -8,6 +8,7 @@ import com.examensw1.umlcollab.features.diagram.model.RelationType;
 import com.examensw1.umlcollab.features.diagram.service.DiagramService;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
 import java.util.Comparator;
@@ -39,8 +40,13 @@ public class FlutterGenerationService {
         try (ByteArrayOutputStream bytes = new ByteArrayOutputStream(); ZipOutputStream zip = new ZipOutputStream(bytes, StandardCharsets.UTF_8)) {
             add(zip, "README.md", readme(model));
             add(zip, ".gitignore", ".dart_tool/\nbuild/\n.env\n");
+            addResource(zip, "assets/models/vosk-model-small-es-0.42.zip", "/vosk/vosk-model-small-es-0.42.zip");
             add(zip, "analysis_options.yaml", "include: package:flutter_lints/flutter.yaml\n");
             add(zip, "pubspec.yaml", pubspec(model));
+            add(zip, "tool/prepare_android.ps1", prepareAndroidScript());
+            add(zip, "tool/run_usb.ps1", runUsbScript());
+            add(zip, "test/widget_test.dart", "import 'package:flutter_test/flutter_test.dart';\n\nvoid main() { test('plantilla Flutter generada', () => expect(true, isTrue)); }\n");
+            add(zip, "test/assistant_contract_test.dart", assistantContractTest(model));
             add(zip, "lib/core/app_config.dart", "import 'package:flutter/foundation.dart';\nclass AppConfig { const AppConfig._(); static const _configuredUrl = String.fromEnvironment('API_BASE_URL', defaultValue: ''); static String _apiBaseUrl = _configuredUrl.isNotEmpty ? _configuredUrl : kIsWeb || defaultTargetPlatform != TargetPlatform.android ? 'http://127.0.0.1:8081/api' : 'http://10.0.2.2:8081/api'; static String get apiBaseUrl => _apiBaseUrl; static void setApiBaseUrl(String value) { final normalized = value.trim().replaceFirst(RegExp(r'/$'), ''); final uri = Uri.tryParse(normalized); if (uri == null || !uri.hasScheme || (uri.scheme != 'http' && uri.scheme != 'https')) throw const FormatException('Ingresa una URL http:// o https:// válida.'); _apiBaseUrl = normalized; } }\n");
             add(zip, "lib/core/app_theme.dart", appTheme());
             add(zip, "lib/core/id_generator.dart", idGenerator());
@@ -48,7 +54,7 @@ public class FlutterGenerationService {
             add(zip, "lib/shared/server_settings_button.dart", serverSettingsButton());
             add(zip, "lib/shared/app_empty_state.dart", appEmptyState());
             add(zip, "lib/shared/offline_status_banner.dart", offlineStatusBanner());
-            add(zip, "lib/core/ollama_config.dart", "class OllamaConfig { const OllamaConfig._(); static const enabled = bool.fromEnvironment('AI_ENABLED', defaultValue: false); static const baseUrl = String.fromEnvironment('OLLAMA_BASE_URL', defaultValue: ''); static const model = String.fromEnvironment('OLLAMA_MODEL', defaultValue: ''); static bool get isConfigured => enabled && baseUrl.isNotEmpty && model.isNotEmpty; static Uri get generateUri => Uri.parse('${baseUrl.replaceFirst(RegExp(r'/$'), '')}/api/generate'); }\n");
+            add(zip, "lib/core/ollama_config.dart", "class OllamaConfig { const OllamaConfig._(); static const enabled = bool.fromEnvironment('AI_ENABLED', defaultValue: false); static const baseUrl = String.fromEnvironment('OLLAMA_BASE_URL', defaultValue: ''); static const model = String.fromEnvironment('OLLAMA_MODEL', defaultValue: 'qwen2.5:3b-instruct-q5_0'); static bool get isConfigured => enabled && baseUrl.isNotEmpty && model.isNotEmpty; static Uri get generateUri => Uri.parse('${baseUrl.replaceFirst(RegExp(r'/$'), '')}/api/generate'); }\n");
             add(zip, "lib/ai/assistant_schema.dart", assistantSchema(model));
             add(zip, "lib/ai/ollama_assistant_service.dart", ollamaAssistantService());
             add(zip, "lib/ai/assistant_sheet.dart", assistantSheet());
@@ -79,8 +85,107 @@ public class FlutterGenerationService {
 
     private void add(ZipOutputStream zip, String path, String content) throws IOException { zip.putNextEntry(new ZipEntry(path)); zip.write(content.getBytes(StandardCharsets.UTF_8)); zip.closeEntry(); }
 
+    private void addResource(ZipOutputStream zip, String path, String resourcePath) throws IOException {
+        try (InputStream input = getClass().getResourceAsStream(resourcePath)) {
+            if (input == null) throw new IllegalStateException("No se encontró el recurso requerido: " + resourcePath);
+            zip.putNextEntry(new ZipEntry(path));
+            input.transferTo(zip);
+            zip.closeEntry();
+        }
+    }
+
+    private String prepareAndroidScript() {
+        return """
+                $ErrorActionPreference = 'Stop'
+                $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+                $android = Join-Path $root 'android'
+                if (-not (Test-Path -LiteralPath $android)) { throw 'Primero ejecuta: flutter create . --platforms=android' }
+
+                $candidates = @($env:ANDROID_SDK_ROOT, $env:ANDROID_HOME, (Join-Path $env:USERPROFILE 'Android'), (Join-Path $env:LOCALAPPDATA 'Android/Sdk')) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+                if ($candidates.Count -eq 0) { throw 'No encontramos Android SDK. Instala Android Studio o configura ANDROID_SDK_ROOT.' }
+                $sdk = @($candidates)[0]
+                $env:ANDROID_SDK_ROOT = $sdk
+                $env:ANDROID_HOME = $sdk
+                flutter config --android-sdk $sdk | Out-Null
+                $sdkForGradle = $sdk.Replace([string][char]92, '/')
+                $localProperties = Join-Path $android 'local.properties'
+                $local = if (Test-Path -LiteralPath $localProperties) { Get-Content -LiteralPath $localProperties -Raw } else { '' }
+                if ($local -match '(?m)^sdk.dir=.*$') { $local = [regex]::Replace($local, '(?m)^sdk.dir=.*$', "sdk.dir=$sdkForGradle") } else { $local = "sdk.dir=$sdkForGradle`n$local" }
+                [System.IO.File]::WriteAllText($localProperties, $local, [System.Text.UTF8Encoding]::new($false))
+
+                $manifestPath = Join-Path $android 'app/src/main/AndroidManifest.xml'
+                $manifest = Get-Content -LiteralPath $manifestPath -Raw
+                foreach ($permission in @('android.permission.RECORD_AUDIO', 'android.permission.INTERNET')) {
+                  if ($manifest -notmatch [regex]::Escape($permission)) { $manifest = $manifest -replace '<manifest([^>]*)>', "<manifest`$1>`n    <uses-permission android:name=`"$permission`" />" }
+                }
+                [System.IO.File]::WriteAllText($manifestPath, $manifest, [System.Text.UTF8Encoding]::new($false))
+                $gradlePath = Join-Path $android 'build.gradle.kts'
+                $gradle = Get-Content -LiteralPath $gradlePath -Raw
+                if ($gradle -notmatch 'name == "vosk_flutter"') {
+                  $patch = @('', 'gradle.beforeProject {', '  if (name == "vosk_flutter") {', '    pluginManager.withPlugin("com.android.library") {', '      extensions.configure<com.android.build.api.dsl.LibraryExtension>("android") {', '        namespace = "org.vosk.vosk_flutter"', '      }', '    }', '  }', '}')
+                  Add-Content -LiteralPath $gradlePath -Value ($patch -join [Environment]::NewLine) -Encoding utf8
+                }
+                $model = Join-Path $root 'assets/models/vosk-model-small-es-0.42.zip'
+                if (-not (Test-Path -LiteralPath $model)) { throw 'Falta el modelo de voz offline Vosk dentro de assets/models.' }
+                Write-Host 'Android preparado: SDK correcto, permisos de red/micrófono y modelo de voz local verificados.'
+                """;
+    }
+
+    private String runUsbScript() {
+        return """
+                param([string]$DeviceId, [switch]$UseOllama)
+                $ErrorActionPreference = 'Stop'
+                $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+                Push-Location $root
+                try {
+                  flutter create . --platforms=android
+                  & (Join-Path $PSScriptRoot 'prepare_android.ps1')
+                  flutter pub get
+                  if ([string]::IsNullOrWhiteSpace($DeviceId)) {
+                    $devices = @(adb devices | Where-Object { $_ -match 'device$' -and $_ -notmatch 'List' } | ForEach-Object { ($_ -split '\\s+')[0] })
+                    if (@($devices).Count -ne 1) { throw 'Conecta un solo teléfono con depuración USB y ejecuta adb devices.' }
+                    $DeviceId = @($devices)[0]
+                  }
+                  adb reverse tcp:8081 tcp:8081
+                  $flutterArgs = @('run', '-d', $DeviceId, '--dart-define=API_BASE_URL=http://127.0.0.1:8081/api')
+                  if ($UseOllama) {
+                    if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) { throw 'No encontramos Ollama. Instálalo y descarga el modelo antes de usar -UseOllama.' }
+                    $model = if ([string]::IsNullOrWhiteSpace($env:OLLAMA_MODEL)) { 'qwen2.5:3b-instruct-q5_0' } else { $env:OLLAMA_MODEL }
+                    $available = (& ollama list 2>$null | Out-String)
+                    if ($available -notmatch [regex]::Escape($model)) { throw "Falta el modelo $model. Con Internet, ejecuta: ollama pull $model. Después podrás usarlo sin Internet." }
+                    adb reverse tcp:11434 tcp:11434
+                    $flutterArgs += '--dart-define=AI_ENABLED=true'
+                    $flutterArgs += '--dart-define=OLLAMA_BASE_URL=http://127.0.0.1:11434'
+                    $flutterArgs += "--dart-define=OLLAMA_MODEL=$model"
+                  }
+                  & flutter @flutterArgs
+                } finally { Pop-Location }
+                """;
+    }
     private String readme(GenerationModel model) {
-        return "# " + model.applicationName() + " mobile\n\nGenerado desde UMLink. Revisa el código antes de producción.\n\n## Ejecutar\n\n```powershell\nflutter create .\nflutter pub get\nflutter run --dart-define=API_BASE_URL=http://10.0.2.2:8081/api\n```\n\n`10.0.2.2` conecta un emulador Android con el backend local. Para un teléfono físico usa la IP LAN del equipo.\n\n## Alcance\n\n- Modelos, cliente REST, listados y formularios CRUD para atributos propios y relaciones persistentes.\n- Las relaciones se seleccionan desde los recursos relacionados; el backend valida sus IDs antes de guardar.\n- Las operaciones de crear, editar y eliminar se guardan localmente cuando el backend no está disponible; la app reintenta sincronizarlas cada 12 segundos.\n- Los conflictos `409` no se descartan ni sobrescriben datos: quedan visibles para reintentar o descartar manualmente.\n- Ollama es opcional y se configura con `AI_ENABLED`, `OLLAMA_BASE_URL` y `OLLAMA_MODEL`; las operaciones se muestran y requieren confirmación. UMLink no usa Ollama ni guarda claves.\n- Copia `vosk-model-small-es-0.42.zip` sin descomprimir a `assets/models/`. Vosk funciona en Android, Windows y Linux; la web usa texto. Android requiere el permiso `RECORD_AUDIO`.\n- En Windows activa Modo de desarrollador antes de `flutter pub get` para que Flutter cree los enlaces de plugins necesarios para Vosk.\n";
+        return """
+                # %s mobile
+
+                Aplicación generada desde UMLink.
+
+                ## Arranque por USB
+
+                1. Inicia el backend generado en otra terminal con `mvn spring-boot:run`.
+                2. Conecta el teléfono, desbloquéalo y acepta la depuración USB.
+                3. Desde esta carpeta ejecuta una sola vez:
+
+                ```powershell
+                ./tool/run_usb.ps1
+                ```
+
+                El script crea Android, corrige automáticamente la ruta del SDK, habilita red y micrófono, prepara Flutter, conecta el puerto USB con el backend local e instala la app.
+
+                ## Asistente y voz sin Internet
+
+                - El asistente interpreta localmente órdenes CRUD como `crear mascota llamada Luna`, `editar mascota id abc nombre Sol` o `eliminar mascota id abc`; pide confirmación antes de aplicar cambios.
+                - El modelo Vosk de español ya está incluido en `assets/models/`, por lo que el reconocimiento de voz funciona sin Internet después de conceder el permiso de micrófono en Android.
+                - Ollama local es opcional: con ./tool/run_usb.ps1 -UseOllama interpreta primero las órdenes complejas; sin él, el intérprete integrado sigue cubriendo crear, editar, eliminar y consultar.
+                """.formatted(model.applicationName());
     }
 
     private String pubspec(GenerationModel model) { return "name: " + model.packageName() + "\ndescription: Aplicación Flutter generada desde UMLink.\npublish_to: none\nversion: 0.1.0+1\nenvironment:\n  sdk: ^3.11.0\ndependencies:\n  flutter:\n    sdk: flutter\n  http: ^0.13.6\n  shared_preferences: ^2.3.2\n  speech_to_text: ^7.4.0\n  vosk_flutter: ^0.3.48\n  web: ^1.1.1\ndependency_overrides:\n  # Vosk 0.3.x declara una versión Android antigua; esta evita APIs Flutter retiradas.\n  permission_handler: ^12.0.3\ndev_dependencies:\n  flutter_test:\n    sdk: flutter\n  flutter_lints: ^6.0.0\nflutter:\n  uses-material-design: true\n  assets:\n    - assets/models/\n"; }
@@ -119,7 +224,7 @@ public class FlutterGenerationService {
                   final IconData icon;
                   @override Widget build(BuildContext context) {
                     final colors = Theme.of(context).colorScheme;
-                    return Center(child: Padding(padding: const EdgeInsets.all(32), child: Column(mainAxisSize: MainAxisSize.min, children: [Container(padding: const EdgeInsets.all(18), decoration: BoxDecoration(color: colors.primaryContainer, borderRadius: BorderRadius.circular(22)), child: Icon(icon, color: colors.onPrimaryContainer, size: 34)), const SizedBox(height: 18), Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)), const SizedBox(height: 8), Text(message, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: colors.onSurfaceVariant))]));
+                    return Center(child: Padding(padding: const EdgeInsets.all(32), child: Column(mainAxisSize: MainAxisSize.min, children: [Container(padding: const EdgeInsets.all(18), decoration: BoxDecoration(color: colors.primaryContainer, borderRadius: BorderRadius.circular(22)), child: Icon(icon, color: colors.onPrimaryContainer, size: 34)), const SizedBox(height: 18), Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)), const SizedBox(height: 8), Text(message, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: colors.onSurfaceVariant))])));
                   }
                 }
                 """;
@@ -227,33 +332,77 @@ public class FlutterGenerationService {
                     final text = isConflict ? '${snapshot.conflicts} cambio(s) requieren revisión' : isSyncing ? 'Sincronizando ${snapshot.pending} cambio(s)…' : 'Sin conexión: ${snapshot.pending} cambio(s) guardados localmente';
                     return Material(color: background, child: InkWell(onTap: isConflict ? () => _showConflicts(context) : () => OfflineSyncService.sync(), child: Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), child: Row(children: [Icon(isConflict ? Icons.warning_amber_rounded : isSyncing ? Icons.sync : Icons.cloud_off_outlined, color: foreground, size: 20), const SizedBox(width: 10), Expanded(child: Text(text, style: TextStyle(color: foreground, fontWeight: FontWeight.w600))), if (isConflict) Icon(Icons.chevron_right, color: foreground)]))));
                   });
-                  Future<void> _showConflicts(BuildContext context) => showModalBottomSheet<void>(context: context, showDragHandle: true, builder: (sheetContext) => SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 24), child: ValueListenableBuilder<SyncSnapshot>(valueListenable: OfflineSyncService.state, builder: (context, _, __) { final conflicts = OfflineSyncService.conflicts; return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Cambios por resolver', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)), const SizedBox(height: 8), const Text('No se sobrescribió ningún dato. Puedes reintentar cuando el conflicto esté resuelto en el servidor o descartar manualmente el cambio local.'), const SizedBox(height: 12), ...conflicts.map((item) => ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.sync_problem_outlined), title: Text('${item.method} ${item.path}'), subtitle: Text(item.error ?? 'Conflicto pendiente'), trailing: IconButton(tooltip: 'Descartar cambio local', icon: const Icon(Icons.delete_outline), onPressed: () => OfflineSyncService.discardConflict(item.id))), const SizedBox(height: 8), FilledButton.icon(onPressed: OfflineSyncService.retryConflicts, icon: const Icon(Icons.refresh), label: const Text('Reintentar sincronización'))]); }))); 
+                  Future<void> _showConflicts(BuildContext context) => showModalBottomSheet<void>(context: context, showDragHandle: true, builder: (sheetContext) => SafeArea(child: Padding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 24), child: ValueListenableBuilder<SyncSnapshot>(valueListenable: OfflineSyncService.state, builder: (context, _, __) { final conflicts = OfflineSyncService.conflicts; return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Cambios por resolver', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)), const SizedBox(height: 8), const Text('No se sobrescribió ningún dato. Puedes reintentar cuando el conflicto esté resuelto en el servidor o descartar manualmente el cambio local.'), const SizedBox(height: 12), ...conflicts.map((item) => ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.sync_problem_outlined), title: Text('${item.method} ${item.path}'), subtitle: Text(item.error ?? 'Conflicto pendiente'), trailing: IconButton(tooltip: 'Descartar cambio local', icon: const Icon(Icons.delete_outline), onPressed: () => OfflineSyncService.discardConflict(item.id)))), const SizedBox(height: 8), FilledButton.icon(onPressed: OfflineSyncService.retryConflicts, icon: const Icon(Icons.refresh), label: const Text('Reintentar sincronización'))]); })))); 
                 }
                 """;
     }
 
+    private String assistantContractTest(GenerationModel model) {
+        ClassModel sample = model.classes().stream().filter(item -> item.attributes().stream().map(AttributeModel::fieldName).anyMatch(name -> List.of("nombre", "name", "titulo", "title", "descripcion", "description").contains(name))).findFirst().orElseGet(model.classes()::getFirst);
+        String primary = assistantPrimaryField(sample);
+        String singular = assistantSingular(sample.resourceName());
+        return """
+                import 'package:flutter_test/flutter_test.dart';
+                import 'package:%s/ai/ollama_assistant_service.dart';
+
+                void main() {
+                  final assistant = OllamaAssistantService();
+                  test('interpreta creación contextual sin Internet', () async {
+                    final proposal = await assistant.propose('crear %s llamado Luna');
+                    expect(proposal.operations.single.method, 'POST');
+                    expect(proposal.operations.single.path, '/%s');
+                    expect(proposal.operations.single.body?['%s'], 'Luna');
+                  });
+                  test('interpreta edición y eliminación con identificador', () async {
+                    final update = await assistant.propose('editar %s id registro-7 %s Sol');
+                    expect(update.operations.single.method, 'PUT');
+                    expect(update.operations.single.path, '/%s/registro-7');
+                    expect(update.operations.single.body?['%s'], 'Sol');
+                    final deletion = await assistant.propose('eliminar %s id registro-7');
+                    expect(deletion.operations.single.method, 'DELETE');
+                    expect(deletion.operations.single.path, '/%s/registro-7');
+                  });
+                }
+                """.formatted(model.packageName(), singular, sample.resourceName(), primary, singular, primary, sample.resourceName(), primary, singular, sample.resourceName());
+    }
     private String assistantSchema(GenerationModel model) {
-        String resources = model.classes().stream().map(item -> "- `POST /" + item.resourceName() + "` crea " + item.javaName() + "; `PUT /" + item.resourceName() + "/{id}` actualiza; `DELETE /" + item.resourceName() + "/{id}` elimina.").reduce("", (left, right) -> left + "\\n" + right);
-        String paths = model.classes().stream().map(item -> "'/" + item.resourceName() + "'").reduce((left, right) -> left + ", " + right).orElse("");
-        String labels = model.classes().stream().map(item -> "'/" + item.resourceName() + "': '" + item.javaName() + "'").reduce((left, right) -> left + ", " + right).orElse("");
-        String generatedIds = model.classes().stream().filter(ClassModel::autoGenerateTextId).map(item -> "'/" + item.resourceName() + "'").reduce((left, right) -> left + ", " + right).orElse("");
+        String resources = model.classes().stream().map(item -> "- /" + item.resourceName() + ": " + item.javaName() + " (campos: id, " + item.attributes().stream().map(AttributeModel::fieldName).collect(Collectors.joining(", ")) + ")").collect(Collectors.joining("\n"));
+        String paths = model.classes().stream().map(item -> "'/" + item.resourceName() + "'").collect(Collectors.joining(", "));
+        String labels = model.classes().stream().map(item -> "'/" + item.resourceName() + "': '" + item.javaName() + "'").collect(Collectors.joining(", "));
+        String generatedIds = model.classes().stream().filter(ClassModel::autoGenerateTextId).map(item -> "'/" + item.resourceName() + "'").collect(Collectors.joining(", "));
         String localResources = model.classes().stream().map(item -> {
-            String fields = Stream.concat(Stream.of("'id'"), item.attributes().stream().map(attribute -> "'" + attribute.fieldName() + "'")).collect(Collectors.joining(", "));
-            String primaryField = item.attributes().isEmpty() ? "id" : item.attributes().getFirst().fieldName();
-            return "LocalAssistantResource(path: '/" + item.resourceName() + "', singular: '" + assistantSingular(item.resourceName()) + "', plural: '" + item.resourceName() + "', fields: [" + fields + "], primaryField: '" + primaryField + "')";
+            String fields = Stream.concat(Stream.of("'id'"), item.attributes().stream().map(attribute -> "'" + attribute.fieldName() + "'"))
+                    .collect(Collectors.joining(", "));
+            String fieldTypes = Stream.concat(Stream.of("'id': 'String'"), item.attributes().stream()
+                    .map(attribute -> "'" + attribute.fieldName() + "': '" + attribute.dartType() + "'"))
+                    .collect(Collectors.joining(", "));
+            String primaryField = assistantPrimaryField(item);
+            return "LocalAssistantResource(path: '/" + item.resourceName() + "', singular: '" + assistantSingular(item.javaName())
+                    + "', plural: '" + item.resourceName() + "', fields: [" + fields + "], fieldTypes: {" + fieldTypes
+                    + "}, primaryField: '" + primaryField + "')";
         }).collect(Collectors.joining(", "));
-        return "const assistantAllowedPaths = <String>{" + paths + "};\nconst assistantResourceLabels = <String, String>{" + labels + "};\nconst assistantAutoGeneratedIdPaths = <String>{" + generatedIds + "};\nclass LocalAssistantResource { const LocalAssistantResource({required this.path, required this.singular, required this.plural, required this.fields, required this.primaryField}); final String path; final String singular; final String plural; final List<String> fields; final String primaryField; }\nconst assistantLocalResources = <LocalAssistantResource>[" + localResources + "];\nconst assistantContract = '''Eres un asistente local para una aplicación CRUD generada desde UML. Convierte la instrucción del usuario en JSON estricto, sin markdown. Usa exactamente este formato: {\\\"summary\\\":\\\"texto breve\\\",\\\"operations\\\":[{\\\"method\\\":\\\"POST|PUT|DELETE\\\",\\\"path\\\":\\\"/recurso o /recurso/id\\\",\\\"body\\\":{}}]}. Nunca inventes rutas. Para crear o editar incluye solo campos que el usuario haya indicado; para identificadores manuales pide o genera un UUID si falta. Nunca ejecutes nada: solo propone operaciones. Recursos permitidos:" + resources + "\\n''';\n";
+        return "const assistantAllowedPaths = <String>{" + paths + "};\nconst assistantResourceLabels = <String, String>{" + labels
+                + "};\nconst assistantAutoGeneratedIdPaths = <String>{" + generatedIds
+                + "};\nclass LocalAssistantResource { const LocalAssistantResource({required this.path, required this.singular, required this.plural, required this.fields, required this.fieldTypes, required this.primaryField}); final String path; final String singular; final String plural; final List<String> fields; final Map<String, String> fieldTypes; final String primaryField; }\nconst assistantLocalResources = <LocalAssistantResource>["
+                + localResources + "];\nconst assistantContract = '''Eres el intérprete local de una aplicación CRUD generada desde UML. El contexto describe exactamente los recursos y campos permitidos. Convierte una orden de voz o texto en JSON estricto, sin Markdown ni explicaciones. Formato: {\"summary\":\"texto breve\",\"operations\":[{\"method\":\"POST|PUT|DELETE\",\"path\":\"/recurso o /recurso/id\",\"body\":{}}]}. Nunca inventes rutas, campos ni identificadores. Para crear o editar incluye solo campos dichos por la persona. Para actualizar o eliminar exige el identificador. Nunca ejecutes: solo propone. Recursos permitidos:\n" + resources + "\n''';\n";
+    }
+
+    private String assistantPrimaryField(ClassModel item) {
+        return item.attributes().stream().map(AttributeModel::fieldName)
+                .filter(name -> List.of("nombre", "name", "titulo", "title", "descripcion", "description").contains(name))
+                .findFirst().orElseGet(() -> item.attributes().isEmpty() ? "id" : item.attributes().getFirst().fieldName());
     }
 
     private String assistantSingular(String resource) {
         String normalized = resource.toLowerCase(Locale.ROOT);
+        if (normalized.endsWith("ses") && normalized.length() > 3) return normalized.substring(0, normalized.length() - 1);
         if (normalized.endsWith("es") && normalized.length() > 3) return normalized.substring(0, normalized.length() - 2);
         if (normalized.endsWith("s") && normalized.length() > 2) return normalized.substring(0, normalized.length() - 1);
         return normalized;
     }
-
     private String ollamaAssistantService() {
         return """
+                import 'dart:async';
                 import 'dart:convert';
                 import 'package:http/http.dart' as http;
                 import '../core/api_client.dart';
@@ -274,60 +423,86 @@ public class FlutterGenerationService {
                 }
 
                 class AssistantProposal {
-                  const AssistantProposal({required this.summary, required this.operations, this.offline = false});
+                  const AssistantProposal({required this.summary, required this.operations, this.offline = false, this.usedOllama = false});
                   final String summary;
                   final List<AssistantOperation> operations;
                   final bool offline;
+                  final bool usedOllama;
                 }
 
                 class OllamaAssistantService {
                   OllamaAssistantService({http.Client? client}) : _client = client ?? http.Client();
                   final http.Client _client;
                   Future<AssistantProposal> propose(String instruction) async {
-                    try { return _local(instruction); } on ApiException catch (offlineError) { if (!OllamaConfig.isConfigured) rethrow; try {
-                    final response = await _client.post(OllamaConfig.generateUri, headers: {'Content-Type': 'application/json'}, body: jsonEncode({'model': OllamaConfig.model, 'stream': false, 'format': 'json', 'prompt': '$assistantContract\\nInstrucción: $instruction'})).timeout(const Duration(seconds: 12));
-                    if (response.statusCode < 200 || response.statusCode >= 300) throw ApiException('Ollama no pudo interpretar la instrucción (${response.statusCode}).');
-                    final envelope = jsonDecode(response.body) as Map<String, dynamic>;
-                    final decoded = jsonDecode(envelope['response']?.toString() ?? '{}') as Map<String, dynamic>;
-                    final operations = (decoded['operations'] as List? ?? const []).whereType<Map>().map((item) => _normalizeOperation(AssistantOperation.fromJson(Map<String, dynamic>.from(item)))).toList();
-                    if (operations.isEmpty) throw const ApiException('No entendí una operación ejecutable. Intenta indicar acción, entidad y datos.');
-                    for (final operation in operations) { final segments = operation.path.split('/').where((part) => part.isNotEmpty).toList(); final root = segments.isEmpty ? '/' : '/${segments.first}'; if (!{'POST', 'PUT', 'DELETE'}.contains(operation.method) || !assistantAllowedPaths.contains(root)) throw const ApiException('La propuesta contiene una operación no permitida.'); }
-                    return AssistantProposal(summary: decoded['summary']?.toString() ?? 'Propuesta preparada.', operations: operations);
-                    } catch (_) { throw offlineError; } }
+                    final text = instruction.trim();
+                    if (text.isEmpty) throw const ApiException('Indica una orden antes de interpretarla.');
+                    if (_isReadOnly(text)) return _local(text);
+                    if (OllamaConfig.isConfigured) { try { return await _fromOllama(text); } on ApiException catch (_) { return _local(text); } }
+                    return _local(text);
+                  }
+                  Future<AssistantProposal> _fromOllama(String instruction) async {
+                    try {
+                      final response = await _client.post(OllamaConfig.generateUri, headers: {'Content-Type': 'application/json'}, body: jsonEncode({'model': OllamaConfig.model, 'stream': false, 'format': 'json', 'options': {'temperature': 0}, 'prompt': '$assistantContract\\nInstrucción: $instruction'})).timeout(const Duration(seconds: 8));
+                      if (response.statusCode < 200 || response.statusCode >= 300) throw ApiException('Ollama respondió ${response.statusCode}.');
+                      final envelope = jsonDecode(response.body) as Map<String, dynamic>;
+                      final decoded = jsonDecode(envelope['response']?.toString() ?? '{}') as Map<String, dynamic>;
+                      final operations = (decoded['operations'] as List? ?? const []).whereType<Map>().map((item) => _validateOperation(AssistantOperation.fromJson(Map<String, dynamic>.from(item)))).toList();
+                      if (operations.isEmpty) throw const ApiException('Ollama no devolvió una operación válida.');
+                      return AssistantProposal(summary: decoded['summary']?.toString() ?? 'Propuesta preparada por Ollama local.', operations: operations, usedOllama: true);
+                    } on TimeoutException { throw const ApiException('Ollama local tardó demasiado. Usaré el intérprete integrado si la orden es simple.'); }
+                    on FormatException { throw const ApiException('Ollama no devolvió JSON válido.'); }
+                    on http.ClientException { throw const ApiException('No se pudo contactar a Ollama local.'); }
                   }
                   AssistantProposal _local(String instruction) {
-                    final text = instruction.trim(); final normalized = _normalizeText(text); LocalAssistantResource? resource;
-                    for (final candidate in assistantLocalResources) { if (_word(normalized, candidate.singular) || _word(normalized, candidate.plural)) { resource = candidate; break; } }
-                    if (resource == null) throw const ApiException('Sin conexión puedo crear, editar, eliminar o consultar una entidad conocida. Indica la acción y entidad.');
-                    if (_action(normalized, const ['consultar', 'consulta', 'listar', 'lista', 'mostrar', 'muestra', 'buscar', 'busca', 'ver'])) return AssistantProposal(summary: 'Consulta local: abre la sección ${resource.plural} para ver los registros disponibles.', operations: const [], offline: true);
-                    final id = RegExp(r'\b(?:id|identificador|codigo|código)\s*(?::|=|es)?\s*([A-Za-z0-9_-]+)', caseSensitive: false).firstMatch(text)?.group(1);
-                    if (_action(normalized, const ['eliminar', 'elimina', 'borrar', 'borra'])) { if (id == null) throw ApiException('Indica el identificador para eliminar ${resource.singular}.'); return AssistantProposal(summary: 'Preparé la eliminación sin conexión.', operations: [AssistantOperation(method: 'DELETE', path: '${resource.path}/$id')], offline: true); }
-                    final body = _fields(text, resource);
-                    if (_action(normalized, const ['editar', 'edita', 'actualizar', 'actualiza', 'modificar', 'modifica', 'cambiar', 'cambia'])) { if (id == null) throw ApiException('Indica el identificador para editar ${resource.singular}.'); if (body.isEmpty) throw const ApiException('Indica al menos un dato para actualizar.'); return AssistantProposal(summary: 'Preparé la actualización sin conexión.', operations: [AssistantOperation(method: 'PUT', path: '${resource.path}/$id', body: body)], offline: true); }
-                    if (_action(normalized, const ['crear', 'crea', 'agregar', 'agrega', 'registrar', 'registra', 'nuevo', 'nueva'])) { if (body.isEmpty && resource.fields.length > 1) throw ApiException('Indica un dato para crear ${resource.singular}. Ejemplo: “crear ${resource.singular} llamado Dune”.'); return AssistantProposal(summary: 'Preparé la creación sin conexión. Se sincronizará al recuperar el backend.', operations: [_normalizeOperation(AssistantOperation(method: 'POST', path: resource.path, body: body))], offline: true); }
+                    final normalized = _normalizeText(instruction); final resource = _resourceFor(normalized);
+                    if (resource == null) throw const ApiException('Indica una entidad existente del sistema junto a crear, editar, eliminar o consultar.');
+                    if (_isReadOnly(instruction)) return AssistantProposal(summary: 'Consulta local: abre la sección ${resource.plural} para ver los registros.', operations: const [], offline: true);
+                    final id = RegExp(r'\\b(?:id|identificador|codigo|código)\\s*(?::|=|es)?\\s*([A-Za-z0-9_-]+)', caseSensitive: false).firstMatch(instruction)?.group(1);
+                    if (_action(normalized, const ['eliminar', 'elimina', 'borrar', 'borra'])) { if (id == null) throw ApiException('Indica el identificador para eliminar ${resource.singular}.'); return AssistantProposal(summary: 'Revisa la eliminación propuesta.', operations: [_validateOperation(AssistantOperation(method: 'DELETE', path: '${resource.path}/$id'))], offline: true); }
+                    final body = _fields(instruction, resource);
+                    if (_action(normalized, const ['editar', 'edita', 'actualizar', 'actualiza', 'modificar', 'modifica', 'cambiar', 'cambia'])) { if (id == null) throw ApiException('Indica el identificador para editar ${resource.singular}.'); if (body.isEmpty) throw const ApiException('Indica al menos un dato para actualizar.'); return AssistantProposal(summary: 'Revisa la actualización propuesta.', operations: [_validateOperation(AssistantOperation(method: 'PUT', path: '${resource.path}/$id', body: body))], offline: true); }
+                    if (_action(normalized, const ['crear', 'crea', 'agregar', 'agrega', 'registrar', 'registra', 'nuevo', 'nueva'])) { if (body.isEmpty && resource.fields.length > 1) throw ApiException('Indica un dato para crear ${resource.singular}. Ejemplo: “crear ${resource.singular} llamado Luna”.'); return AssistantProposal(summary: 'Revisa la creación propuesta.', operations: [_validateOperation(AssistantOperation(method: 'POST', path: resource.path, body: body))], offline: true); }
                     throw const ApiException('No identifiqué la acción. Puedes decir crear, editar, eliminar o consultar.');
                   }
-                  Map<String, dynamic> _fields(String text, LocalAssistantResource resource) { final body = <String, dynamic>{}; for (final field in resource.fields.where((item) => item != 'id')) { final words = field.replaceAllMapped(RegExp(r'([a-z])([A-Z])'), (match) => '${match[1]} ${match[2]}'); final match = RegExp('(?:^|[ ,])(?:con +)?${RegExp.escape(words)} *(?::|=|es)? *(.+)\\$', caseSensitive: false).firstMatch(text); if (match != null) body[field] = _clean(match.group(1)!); } if (!body.containsKey(resource.primaryField)) { final named = RegExp(r'\b(?:llamado|llamada|nombre|titulo|título)\s*(?::|=|es)?\s*(.+)$', caseSensitive: false).firstMatch(text); if (named != null) body[resource.primaryField] = _clean(named.group(1)!); } return body; }
+                  AssistantOperation _validateOperation(AssistantOperation operation) {
+                    final parts = operation.path.split('/').where((part) => part.isNotEmpty).toList(); final root = parts.isEmpty ? '' : '/${parts.first}';
+                    LocalAssistantResource? resource; for (final item in assistantLocalResources) { if (item.path == root) { resource = item; break; } }
+                    final resolvedResource = resource;
+                    if (resolvedResource == null || !assistantAllowedPaths.contains(root)) throw const ApiException('La propuesta apunta a un recurso no permitido.');
+                    if (!{'POST', 'PUT', 'DELETE'}.contains(operation.method)) throw const ApiException('La propuesta contiene un método no permitido.');
+                    if (operation.method == 'POST' && parts.length != 1) throw const ApiException('Crear no debe incluir un identificador en la ruta.');
+                    if ((operation.method == 'PUT' || operation.method == 'DELETE') && (parts.length != 2 || parts.last.trim().isEmpty)) throw const ApiException('Actualizar o eliminar requiere un identificador.');
+                    final body = Map<String, dynamic>.from(operation.body ?? const {});
+                    if (body.keys.any((key) => !resolvedResource.fields.contains(key))) throw const ApiException('La propuesta contiene un campo que no pertenece a la entidad.');
+                    if (operation.method != 'DELETE' && body.isEmpty) throw const ApiException('La propuesta no contiene datos para guardar.');
+                    return _normalizeOperation(AssistantOperation(method: operation.method, path: operation.path, body: body));
+                  }
+                  LocalAssistantResource? _resourceFor(String normalized) { for (final candidate in assistantLocalResources) { if (_word(normalized, candidate.singular) || _word(normalized, candidate.plural)) return candidate; } return null; }
+                  bool _isReadOnly(String value) { final normalized = _normalizeText(value); return _action(normalized, const ['consultar', 'consulta', 'listar', 'lista', 'mostrar', 'muestra', 'buscar', 'busca', 'ver']); }
+                  Map<String, dynamic> _fields(String source, LocalAssistantResource resource) {
+                    final body = <String, dynamic>{}; final normalized = _normalizeText(source); final words = <String, String>{ for (final field in resource.fields.where((item) => item != 'id')) field: _fieldWords(field) };
+                    for (final entry in words.entries) { final raw = _fieldValue(source, normalized, entry.value, words.values.where((value) => value != entry.value)); if (raw != null && raw.isNotEmpty) body[entry.key] = _coerce(raw, resource.fieldTypes[entry.key] ?? 'String'); }
+                    if (!body.containsKey(resource.primaryField)) { final named = RegExp(r'\\b(?:llamado|llamada|nombre|titulo|título)\\s*(?::|=|es)?\\s*(.+)$', caseSensitive: false).firstMatch(source); if (named != null) body[resource.primaryField] = _coerce(_clean(named.group(1)!), resource.fieldTypes[resource.primaryField] ?? 'String'); }
+                    return body;
+                  }
+                  String? _fieldValue(String source, String normalized, String fieldWords, Iterable<String> otherFields) {
+                    final start = normalized.indexOf(fieldWords); if (start < 0) return null;
+                    var value = source.substring(start + fieldWords.length).trim().replaceFirst(RegExp(r'^(?:es|=|:|con)\\s*', caseSensitive: false), ''); final normalizedValue = _normalizeText(value); var end = value.length;
+                    for (final other in otherFields) { final at = normalizedValue.indexOf(' $other'); if (at >= 0 && at < end) end = at; }
+                    for (final separator in [',', ';', '.']) { final at = value.indexOf(separator); if (at >= 0 && at < end) end = at; }
+                    return _clean(value.substring(0, end));
+                  }
+                  dynamic _coerce(String value, String type) { final clean = _clean(value); return switch (type) { 'int' => int.tryParse(clean) ?? clean, 'double' => double.tryParse(clean.replaceAll(',', '.')) ?? clean, 'bool' => const ['true', 'verdadero', 'si', 'sí', 'activo'].contains(_normalizeText(clean)), _ => clean }; }
+                  String _fieldWords(String field) => _normalizeText(field.replaceAllMapped(RegExp(r'([a-z])([A-Z])'), (match) => '${match[1]} ${match[2]}'));
                   bool _action(String value, List<String> words) => words.any((word) => _word(value, word));
                   bool _word(String value, String word) => RegExp('(^|[^a-z0-9])${RegExp.escape(_normalizeText(word))}([^a-z0-9]|\\$)').hasMatch(value);
-                  String _clean(String value) => value.trim().replaceAll('"', '').replaceAll("'", '');
+                  String _clean(String value) => value.trim().replaceAll(RegExp(r'^(?:y|e)\\s+|\\s+(?:y|e)$', caseSensitive: false), '').replaceAll('"', '').replaceAll("'", '');
                   String _normalizeText(String value) => value.toLowerCase().replaceAll('á', 'a').replaceAll('é', 'e').replaceAll('í', 'i').replaceAll('ó', 'o').replaceAll('ú', 'u').replaceAll('ñ', 'n');
-                  AssistantOperation _normalizeOperation(AssistantOperation operation) {
-                    if (operation.method != 'POST' || !assistantAutoGeneratedIdPaths.contains(operation.resourcePath)) return operation;
-                    final body = Map<String, dynamic>.from(operation.body ?? const {});
-                    final currentId = body['id']?.toString().trim() ?? '';
-                    if (currentId.isEmpty) body['id'] = IdGenerator.v4();
-                    return AssistantOperation(method: operation.method, path: operation.path, body: body);
-                  }
-                  Future<void> execute(AssistantProposal proposal) async {
-                    final api = ApiClient();
-                    for (final operation in proposal.operations) { if (operation.method == 'DELETE') { await api.delete(operation.path); } else { await api.send(operation.method, operation.path, operation.body ?? <String, dynamic>{}); } }
-                    OfflineSyncService.markOnline();
-                  }
+                  AssistantOperation _normalizeOperation(AssistantOperation operation) { if (operation.method != 'POST' || !assistantAutoGeneratedIdPaths.contains(operation.resourcePath)) return operation; final body = Map<String, dynamic>.from(operation.body ?? const {}); final currentId = body['id']?.toString().trim() ?? ''; if (currentId.isEmpty) body['id'] = IdGenerator.v4(); return AssistantOperation(method: operation.method, path: operation.path, body: body); }
+                  Future<void> execute(AssistantProposal proposal) async { final api = ApiClient(); for (final operation in proposal.operations) { if (operation.method == 'DELETE') { await api.delete(operation.path); } else { await api.send(operation.method, operation.path, operation.body ?? <String, dynamic>{}); } } OfflineSyncService.markOnline(); }
                 }
                 """;
     }
-
     private String voiceServiceStub() {
         return """
                 import 'package:flutter/foundation.dart';
@@ -390,7 +565,7 @@ public class FlutterGenerationService {
                       await _speechService.start(onRecognitionError: (error) => onError?.call('Vosk informó un error de audio: $error'));
                     } catch (error) { onError?.call('No se pudo iniciar el reconocimiento offline: $error'); rethrow; }
                   }
-                  Future<void> stop() async { await _resultSubscription?.cancel(); await _partialSubscription?.cancel(); _resultSubscription = null; _partialSubscription = null; await _speechService?.stop(); }
+                  Future<void> stop() async { await _speechService?.stop(); await Future<void>.delayed(const Duration(milliseconds: 120)); await _resultSubscription?.cancel(); await _partialSubscription?.cancel(); _resultSubscription = null; _partialSubscription = null; }
                   Future<void> dispose() => stop();
                   String _text(dynamic result) { try { final decoded = jsonDecode(result.toString()); if (decoded is Map) return (decoded['text'] ?? decoded['partial'] ?? '').toString(); } catch (_) {} return result.toString(); }
                 }
@@ -398,7 +573,7 @@ public class FlutterGenerationService {
     }
 
     private String voskModelReadme() {
-        return "# Modelo Vosk\n\nCopia aquí `vosk-model-small-es-0.42.zip` para voz offline en Android, Windows o Linux. No descomprimas el archivo.\n\nEn Android agrega `<uses-permission android:name=\"android.permission.RECORD_AUDIO\" />` a `android/app/src/main/AndroidManifest.xml` y las reglas ProGuard recomendadas por Vosk. Flutter web usa texto porque Vosk no tiene soporte web.\n";
+        return "# Modelo Vosk incluido\n\nEsta descarga incluye `vosk-model-small-es-0.42.zip` para reconocimiento de voz offline en español. No elimines ni descomprimas el archivo.\n";
     }
 
     private String assistantButton() {
@@ -440,13 +615,33 @@ public class FlutterGenerationService {
 
                   @override void dispose() { _controller.dispose(); unawaited(_voice.dispose()); super.dispose(); }
                   Future<void> _propose() async { final text = _controller.text.trim(); if (text.isEmpty) return; setState(() { _working = true; _proposal = null; }); try { final proposal = await _assistant.propose(text); if (mounted) setState(() => _proposal = proposal); } on ApiException catch (error) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message))); } catch (_) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No pudimos conectar con el asistente local.'))); } finally { if (mounted) setState(() => _working = false); } }
-                  Future<void> _toggleVoice() async { try { if (_listening) { await _voice.stop(); if (mounted) setState(() { _listening = false; _voiceStatus = 'Escucha finalizada.'; }); return; } setState(() => _voiceStatus = 'Preparando el reconocimiento offline…'); await _voice.start((text) { if (mounted) setState(() => _controller.text = text); }, onError: (message) { if (mounted) setState(() { _listening = false; _voiceStatus = message; }); }, onStopped: () { if (mounted) setState(() { _listening = false; _voiceStatus = 'Escucha finalizada.'; }); }); if (mounted) setState(() { _listening = true; _voiceStatus = 'Escuchando en español. El texto aparecerá al hacer una pausa o al pulsar Detener.'; }); } on UnsupportedError catch (error) { if (mounted) setState(() => _voiceStatus = error.message?.toString()); } catch (error) { if (mounted) setState(() => _voiceStatus = 'No pudimos iniciar el reconocimiento offline: $error'); } }
+                  Future<void> _toggleVoice() async { try { if (_listening) { if (mounted) setState(() { _listening = false; _voiceStatus = 'Interpretando la orden…'; }); await _voice.stop(); await Future<void>.delayed(const Duration(milliseconds: 150)); await _propose(); return; } setState(() => _voiceStatus = 'Preparando el reconocimiento offline…'); await _voice.start((text) { if (mounted) setState(() => _controller.text = text); }, onError: (message) { if (mounted) setState(() { _listening = false; _voiceStatus = message; }); }, onStopped: () { if (mounted) setState(() { _listening = false; _voiceStatus = 'Escucha finalizada. Pulsa el micrófono nuevamente para analizar.'; }); }); if (mounted) setState(() { _listening = true; _voiceStatus = 'Escuchando sin Internet. Pulsa el micrófono otra vez para detener y analizar.'; }); } on UnsupportedError catch (error) { if (mounted) setState(() => _voiceStatus = error.message?.toString()); } catch (error) { if (mounted) setState(() => _voiceStatus = 'No pudimos iniciar el reconocimiento offline: $error'); } }
                   Future<void> _confirm() async { final proposal = _proposal; if (proposal == null || proposal.operations.isEmpty) return; final accepted = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(title: const Text('Revisar datos'), content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Estos son los datos que se aplicarán.'), const SizedBox(height: 12), ...proposal.operations.map(_operationReview)])), actions: [TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Volver a editar')), FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Aplicar cambios'))])); if (accepted != true) return; setState(() => _working = true); try { await _assistant.execute(proposal); if (!mounted) return; widget.onApplied(); Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cambios aplicados o guardados para sincronización.'))); } on ApiException catch (error) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message))); } finally { if (mounted) setState(() => _working = false); } }
                   Widget _operationReview(AssistantOperation operation) => Card(margin: const EdgeInsets.only(bottom: 10), child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Icon(operation.method == 'DELETE' ? Icons.delete_outline : Icons.edit_note_outlined), const SizedBox(width: 8), Expanded(child: Text(operation.actionLabel, style: const TextStyle(fontWeight: FontWeight.w800)))]), if (operation.body != null && operation.body!.isNotEmpty) ...[const SizedBox(height: 8), ...operation.body!.entries.map((entry) => Padding(padding: const EdgeInsets.only(bottom: 4), child: Text('${_fieldLabel(entry.key)}: ${_valueText(entry.value)}')))] else if (operation.method == 'DELETE') ...[const SizedBox(height: 8), const Text('Se eliminará este registro.')]])));
                   String _fieldLabel(String value) { final words = value.replaceAllMapped(RegExp(r'([a-záéíóú])([A-Z])'), (match) => '${match[1]} ${match[2]}').replaceAll('Ids', ' relacionados'); return words.isEmpty ? 'Dato' : '${words[0].toUpperCase()}${words.substring(1)}'; }
                   String _valueText(dynamic value) => value is List ? value.join(', ') : value?.toString() ?? 'Sin especificar';
-
-                  @override Widget build(BuildContext context) => SafeArea(child: Padding(padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(context).bottom), child: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Theme.of(context).colorScheme.primaryContainer, borderRadius: BorderRadius.circular(14)), child: const Icon(Icons.auto_awesome_outlined)), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Asistente local', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)), Text(OllamaConfig.isConfigured ? 'Modo integrado disponible; Ollama amplía las instrucciones cuando está conectado.' : 'Modo integrado listo sin Internet para crear, editar, eliminar y consultar.', style: Theme.of(context).textTheme.bodySmall)]))]), const SizedBox(height: 20), TextField(controller: _controller, minLines: 2, maxLines: 5, textInputAction: TextInputAction.newline, decoration: const InputDecoration(labelText: '¿Qué deseas hacer?', hintText: 'Ej.: Crea un registro con sus datos'), onSubmitted: (_) => _propose()), const SizedBox(height: 12), Row(children: [OutlinedButton.icon(onPressed: _working ? null : _toggleVoice, icon: Icon(_listening ? Icons.stop_circle_outlined : Icons.mic_none_outlined), label: Text(_listening ? 'Detener voz' : 'Usar micrófono')), const SizedBox(width: 10), Expanded(child: FilledButton.icon(onPressed: _working ? null : _propose, icon: _working ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.arrow_upward), label: const Text('Interpretar')))]), if (_voiceStatus != null) ...[const SizedBox(height: 12), DecoratedBox(decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(12)), child: Padding(padding: const EdgeInsets.all(12), child: Text(_voiceStatus!, style: Theme.of(context).textTheme.bodySmall)))], if (_proposal != null) ...[const SizedBox(height: 18), Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [if (_proposal!.offline) ...[const Chip(avatar: Icon(Icons.offline_bolt_outlined, size: 18), label: Text('Interpretado sin conexión')), const SizedBox(height: 8)], Text(_proposal!.summary, style: const TextStyle(fontWeight: FontWeight.w700)), if (_proposal!.operations.isNotEmpty) ...[const SizedBox(height: 12), ..._proposal!.operations.map(_operationReview), FilledButton.icon(onPressed: _working ? null : _confirm, icon: const Icon(Icons.visibility_outlined), label: const Text('Revisar datos'))]]))]])));
+                  @override
+                  Widget build(BuildContext context) {
+                    return SafeArea(
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(children: [Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Theme.of(context).colorScheme.primaryContainer, borderRadius: BorderRadius.circular(14)), child: const Icon(Icons.auto_awesome_outlined)), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Asistente local', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)), Text(OllamaConfig.isConfigured ? 'Modo integrado disponible; Ollama local interpreta primero las órdenes complejas.' : 'Modo integrado listo sin Internet para crear, editar, eliminar y consultar.', style: Theme.of(context).textTheme.bodySmall)]))]),
+                              const SizedBox(height: 20),
+                              TextField(controller: _controller, minLines: 2, maxLines: 5, textInputAction: TextInputAction.newline, decoration: const InputDecoration(labelText: '¿Qué deseas hacer?', hintText: 'Ej.: Crea un registro con sus datos'), onSubmitted: (_) => _propose()),
+                              const SizedBox(height: 12),
+                              Row(children: [OutlinedButton.icon(onPressed: _working ? null : _toggleVoice, icon: Icon(_listening ? Icons.stop_circle_outlined : Icons.mic_none_outlined), label: Text(_listening ? 'Detener voz' : 'Usar micrófono')), const SizedBox(width: 10), Expanded(child: FilledButton.icon(onPressed: _working ? null : _propose, icon: _working ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.arrow_upward), label: const Text('Interpretar')))]),
+                              if (_voiceStatus != null) ...[const SizedBox(height: 12), DecoratedBox(decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(12)), child: Padding(padding: const EdgeInsets.all(12), child: Text(_voiceStatus!, style: Theme.of(context).textTheme.bodySmall)))],
+                              if (_proposal != null) ...[const SizedBox(height: 18), Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [if (_proposal!.offline) ...[const Chip(avatar: Icon(Icons.offline_bolt_outlined, size: 18), label: Text('Interpretado sin conexión')), const SizedBox(height: 8)], Text(_proposal!.summary, style: const TextStyle(fontWeight: FontWeight.w700)), if (_proposal!.operations.isNotEmpty) ...[const SizedBox(height: 12), ..._proposal!.operations.map(_operationReview), FilledButton.icon(onPressed: _working ? null : _confirm, icon: const Icon(Icons.visibility_outlined), label: const Text('Revisar datos'))]])))],
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }
                 }
                 """;
     }
@@ -541,9 +736,8 @@ public class FlutterGenerationService {
     private String main(GenerationModel model) {
         String imports = model.classes().stream().map(item -> "import 'features/" + item.resourceName() + "/pages/" + item.fileStem() + "_page.dart';").reduce("", (left, right) -> left + right + "\n");
         String pages = model.classes().stream().map(item -> "_Destination('" + item.javaName() + "', " + item.javaName() + "Page(), Icons.view_in_ar_outlined)").reduce((left, right) -> left + ", " + right).orElse("");
-        return "import 'package:flutter/material.dart';\nimport 'core/app_config.dart';\nimport 'core/app_theme.dart';\nimport 'core/offline_sync_service.dart';\nimport 'shared/assistant_button.dart';\nimport 'shared/offline_status_banner.dart';\nimport 'shared/server_settings_button.dart';\n" + imports + "Future<void> main() async { WidgetsFlutterBinding.ensureInitialized(); await OfflineSyncService.initialize(); runApp(const GeneratedApp()); }\nclass GeneratedApp extends StatelessWidget { const GeneratedApp({super.key}); @override Widget build(BuildContext context) => MaterialApp(debugShowCheckedModeBanner: false, title: '" + model.applicationName() + "', theme: AppTheme.light(), home: const GeneratedHome()); }\nclass GeneratedHome extends StatefulWidget { const GeneratedHome({super.key}); @override State<GeneratedHome> createState() => _GeneratedHomeState(); }\nclass _GeneratedHomeState extends State<GeneratedHome> { static const items = <_Destination>[" + pages + "]; var selected = 0; @override Widget build(BuildContext context) { final item = items[selected]; return Scaffold(appBar: AppBar(toolbarHeight: 76, title: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [Text('" + model.applicationName() + "', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)), Text(item.label, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800))]), actions: [AssistantButton(onApplied: () => setState(() {})), ServerSettingsButton(onSaved: () => setState(() {})), const SizedBox(width: 8)]), body: Column(children: [const OfflineStatusBanner(), Expanded(child: KeyedSubtree(key: ValueKey(AppConfig.apiBaseUrl), child: item.page))]), bottomNavigationBar: NavigationBar(selectedIndex: selected, onDestinationSelected: (index) => setState(() => selected = index), destinations: items.map((item) => NavigationDestination(icon: Icon(item.icon), selectedIcon: Icon(item.icon), label: item.label)).toList())); }}\nclass _Destination { const _Destination(this.label, this.page, this.icon); final String label; final Widget page; final IconData icon; }\n";
+        return "import 'package:flutter/material.dart';\nimport 'core/app_config.dart';\nimport 'core/app_theme.dart';\nimport 'core/offline_sync_service.dart';\nimport 'shared/assistant_button.dart';\nimport 'shared/offline_status_banner.dart';\nimport 'shared/server_settings_button.dart';\n" + imports + "Future<void> main() async { WidgetsFlutterBinding.ensureInitialized(); await OfflineSyncService.initialize(); runApp(const GeneratedApp()); }\nclass GeneratedApp extends StatelessWidget { const GeneratedApp({super.key}); @override Widget build(BuildContext context) => MaterialApp(debugShowCheckedModeBanner: false, title: '" + model.applicationName() + "', theme: AppTheme.light(), home: const GeneratedHome()); }\nclass GeneratedHome extends StatefulWidget { const GeneratedHome({super.key}); @override State<GeneratedHome> createState() => _GeneratedHomeState(); }\nclass _GeneratedHomeState extends State<GeneratedHome> { static const items = <_Destination>[" + pages + "]; var selected = 0; @override Widget build(BuildContext context) { final item = items[selected]; final useDrawer = items.length > 5; return Scaffold(drawer: useDrawer ? Drawer(child: SafeArea(child: Column(children: [Padding(padding: const EdgeInsets.fromLTRB(24, 28, 24, 12), child: Align(alignment: Alignment.centerLeft, child: Text('Módulos del sistema', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)))), Expanded(child: ListView(children: items.asMap().entries.map((entry) => ListTile(selected: selected == entry.key, leading: Icon(entry.value.icon), title: Text(entry.value.label), onTap: () { setState(() => selected = entry.key); Navigator.pop(context); })).toList()))]))) : null, appBar: AppBar(toolbarHeight: 76, title: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [Text('" + model.applicationName() + "', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)), Text(item.label, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800))]), actions: [AssistantButton(onApplied: () => setState(() {})), ServerSettingsButton(onSaved: () => setState(() {})), const SizedBox(width: 8)]), body: Column(children: [const OfflineStatusBanner(), Expanded(child: KeyedSubtree(key: ValueKey(AppConfig.apiBaseUrl), child: item.page))]), bottomNavigationBar: useDrawer ? null : NavigationBar(selectedIndex: selected, onDestinationSelected: (index) => setState(() => selected = index), destinations: items.map((item) => NavigationDestination(icon: Icon(item.icon), selectedIcon: Icon(item.icon), label: item.label)).toList())); }}\nclass _Destination { const _Destination(this.label, this.page, this.icon); final String label; final Widget page; final IconData icon; }\n";
     }
-
     private String dartModel(ClassModel item) {
         String parameters = item.attributes().stream().map(attribute -> "this." + attribute.fieldName()).reduce("this.id", (left, right) -> left + ", " + right) + item.relations().stream().map(relation -> "this." + relation.requestName()).reduce("", (left, right) -> left + ", " + right);
         String fields = item.attributes().stream().map(attribute -> "final " + attribute.dartType() + "? " + attribute.fieldName() + ";").reduce("", (left, right) -> left + " " + right) + item.relations().stream().map(RelationField::dartField).reduce("", (left, right) -> left + " " + right);
@@ -558,7 +752,7 @@ public class FlutterGenerationService {
     }
 
     private String page(ClassModel item) {
-        String idController = item.generatedId() ? "" : item.autoGenerateTextId() ? "final idController = TextEditingController(text: value == null ? IdGenerator.v4() : value?.id ?? '');" : "final idController = TextEditingController(text: value?.id ?? '');";
+        String idController = item.generatedId() ? "" : item.autoGenerateTextId() ? "final idController = TextEditingController(text: value == null ? IdGenerator.v4() : value.id ?? '');" : "final idController = TextEditingController(text: value?.id ?? '');";
         String controllers = item.attributes().stream().map(attribute -> "final " + attribute.fieldName() + "Controller = TextEditingController(text: value?." + attribute.fieldName() + "?.toString() ?? '');").reduce(idController, (left, right) -> left + " " + right);
         String idInput = item.generatedId() ? "" : item.autoGenerateTextId() ? "TextField(controller: idController, decoration: const InputDecoration(labelText: 'Identificador', helperText: 'UUID generado automáticamente; puedes modificarlo.')), " : "TextField(controller: idController, decoration: const InputDecoration(labelText: 'Identificador *', helperText: 'Obligatorio')), ";
         String inputs = idInput + item.attributes().stream().map(attribute -> "TextField(controller: " + attribute.fieldName() + "Controller, decoration: const InputDecoration(labelText: '" + attribute.fieldName() + " (" + attribute.dartType() + ")')), ").reduce("", String::concat);
@@ -567,7 +761,8 @@ public class FlutterGenerationService {
         String values = Stream.concat(item.attributes().stream().map(attribute -> attribute.fieldName() + ": " + attribute.fromText()), item.relations().stream().map(RelationField::valueParameter)).collect(Collectors.joining(", "));
         String resultId = item.generatedId() ? "value?.id" : "idController.text.trim().isEmpty ? null : idController.text.trim()";
         String idGeneratorImport = item.autoGenerateTextId() ? "import '../../../core/id_generator.dart'; " : "";
-        return "import 'package:flutter/material.dart'; import '../../../core/api_client.dart'; " + idGeneratorImport + "import '../../../shared/app_empty_state.dart'; import '../../../shared/relation_selector.dart'; import '../data-access/" + item.fileStem() + "_api.dart'; import '../models/" + item.fileStem() + ".dart'; class " + item.javaName() + "Page extends StatefulWidget { const " + item.javaName() + "Page({super.key}); @override State<" + item.javaName() + "Page> createState() => _" + item.javaName() + "PageState(); } class _" + item.javaName() + "PageState extends State<" + item.javaName() + "Page> { final api = " + item.javaName() + "Api(); late Future<List<" + item.javaName() + ">> items; @override void initState() { super.initState(); items = api.findAll(); } void reload() => setState(() => items = api.findAll()); Future<void> edit([" + item.javaName() + "? value]) async { final isCreating = value == null; " + controllers + relationState + " final result = await showDialog<" + item.javaName() + ">(context: context, builder: (dialogContext) => AlertDialog(title: Text(isCreating ? 'Crear " + item.javaName() + "' : 'Editar " + item.javaName() + "'), content: StatefulBuilder(builder: (context, setDialogState) => SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [" + inputs + relationInputs + "]))), actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancelar')), FilledButton(onPressed: () => Navigator.pop(dialogContext, " + item.javaName() + "(id: " + resultId + ", " + values + ")), child: const Text('Guardar'))])); if (result == null || !mounted) return; try { if (isCreating) { await api.create(result); } else { await api.update(result); } reload(); } on ApiException catch (error) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message))); } } Future<void> remove(" + item.javaName() + " value) async { final id = value.id; if (id == null) return; await api.delete(id); if (mounted) reload(); } @override Widget build(BuildContext context) => Scaffold(body: FutureBuilder<List<" + item.javaName() + ">>(future: items, builder: (context, snapshot) { if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator()); if (snapshot.hasError) return const AppEmptyState(title: 'No pudimos cargar " + item.javaName() + "', message: 'Revisa la conexión con el servidor e inténtalo nuevamente.', icon: Icons.cloud_off_outlined); final values = snapshot.data ?? const <" + item.javaName() + ">[]; if (values.isEmpty) return AppEmptyState(title: 'Aún no hay registros', message: 'Crea tu primer registro de " + item.javaName() + " para comenzar.', icon: Icons.auto_awesome_mosaic_outlined); return RefreshIndicator(onRefresh: () async { reload(); await items; }, child: ListView.separated(padding: const EdgeInsets.fromLTRB(16, 16, 16, 104), itemCount: values.length, separatorBuilder: (_, __) => const SizedBox(height: 12), itemBuilder: (context, index) { final value = values[index]; final colors = Theme.of(context).colorScheme; return Card(child: ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9), leading: CircleAvatar(backgroundColor: colors.primaryContainer, foregroundColor: colors.onPrimaryContainer, child: const Icon(Icons.inventory_2_outlined)), title: Text(value.displayLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)), subtitle: const Padding(padding: EdgeInsets.only(top: 4), child: Text('Toca para ver o editar el registro')), onTap: () => edit(value), trailing: IconButton(tooltip: 'Eliminar', icon: Icon(Icons.delete_outline, color: colors.error), onPressed: () => remove(value))); })); }), floatingActionButton: FloatingActionButton.extended(onPressed: () => edit(), icon: const Icon(Icons.add), label: const Text('Nuevo " + item.javaName() + "'))); }\n";
+        String relationSelectorImport = item.relations().isEmpty() ? "" : "import '../../../shared/relation_selector.dart'; ";
+        return "import 'package:flutter/material.dart'; import '../../../core/api_client.dart'; " + idGeneratorImport + "import '../../../shared/app_empty_state.dart'; " + relationSelectorImport + "import '../data-access/" + item.fileStem() + "_api.dart'; import '../models/" + item.fileStem() + ".dart'; class " + item.javaName() + "Page extends StatefulWidget { const " + item.javaName() + "Page({super.key}); @override State<" + item.javaName() + "Page> createState() => _" + item.javaName() + "PageState(); } class _" + item.javaName() + "PageState extends State<" + item.javaName() + "Page> { final api = " + item.javaName() + "Api(); late Future<List<" + item.javaName() + ">> items; @override void initState() { super.initState(); items = api.findAll(); } void reload() => setState(() => items = api.findAll()); Future<void> edit([" + item.javaName() + "? value]) async { final isCreating = value == null; " + controllers + relationState + " final result = await showDialog<" + item.javaName() + ">(context: context, builder: (dialogContext) => AlertDialog(title: Text(isCreating ? 'Crear " + item.javaName() + "' : 'Editar " + item.javaName() + "'), content: StatefulBuilder(builder: (context, setDialogState) => SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [" + inputs + relationInputs + "]))), actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancelar')), FilledButton(onPressed: () => Navigator.pop(dialogContext, " + item.javaName() + "(id: " + resultId + ", " + values + ")), child: const Text('Guardar'))])); if (result == null || !mounted) return; try { if (isCreating) { await api.create(result); } else { await api.update(result); } reload(); } on ApiException catch (error) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message))); } } Future<void> remove(" + item.javaName() + " value) async { final id = value.id; if (id == null) return; await api.delete(id); if (mounted) reload(); } @override Widget build(BuildContext context) => Scaffold(body: FutureBuilder<List<" + item.javaName() + ">>(future: items, builder: (context, snapshot) { if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator()); if (snapshot.hasError) return const AppEmptyState(title: 'No pudimos cargar " + item.javaName() + "', message: 'Revisa la conexión con el servidor e inténtalo nuevamente.', icon: Icons.cloud_off_outlined); final values = snapshot.data ?? const <" + item.javaName() + ">[]; if (values.isEmpty) return AppEmptyState(title: 'Aún no hay registros', message: 'Crea tu primer registro de " + item.javaName() + " para comenzar.', icon: Icons.auto_awesome_mosaic_outlined); return RefreshIndicator(onRefresh: () async { reload(); await items; }, child: ListView.separated(padding: const EdgeInsets.fromLTRB(16, 16, 16, 104), itemCount: values.length, separatorBuilder: (_, __) => const SizedBox(height: 12), itemBuilder: (context, index) { final value = values[index]; final colors = Theme.of(context).colorScheme; return Card(child: ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9), leading: CircleAvatar(backgroundColor: colors.primaryContainer, foregroundColor: colors.onPrimaryContainer, child: const Icon(Icons.inventory_2_outlined)), title: Text(value.displayLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)), subtitle: const Padding(padding: EdgeInsets.only(top: 4), child: Text('Toca para ver o editar el registro')), onTap: () => edit(value), trailing: IconButton(tooltip: 'Eliminar', icon: Icon(Icons.delete_outline, color: colors.error), onPressed: () => remove(value)))); })); }), floatingActionButton: FloatingActionButton.extended(onPressed: () => edit(), icon: const Icon(Icons.add), label: const Text('Nuevo " + item.javaName() + "'))); }\n";
     }
 
     public record GeneratedFlutter(String fileName, byte[] content) {}
@@ -594,10 +789,10 @@ public class FlutterGenerationService {
             for (UmlClassResponse item : details.classes().stream().sorted(Comparator.comparing(UmlClassResponse::name)).toList()) {
                 String className = className(item.name());
                 if (!names.add(className.toLowerCase(Locale.ROOT))) throw new IllegalArgumentException("Dos clases producen el mismo nombre Dart: " + className + ". Renómbralas antes de generar.");
-                UmlAttributeResponse primaryKey = item.attributes().stream().filter(UmlAttributeResponse::primaryKey).findFirst().orElse(null);
+                UmlAttributeResponse primaryKey = item.attributes().stream().filter(attribute -> attribute.primaryKey() || "id".equals(fieldName(attribute.name()))).findFirst().orElse(null);
                 boolean generatedId = primaryKey == null;
                 boolean autoGenerateTextId = primaryKey != null && ("String".equals(primaryKey.dataType()) || "UUID".equals(primaryKey.dataType()));
-                classById.put(item.id(), new ClassModel(item.id(), className, resourceName(className), snake(className), generatedId, autoGenerateTextId, item.attributes().stream().filter(attribute -> !attribute.primaryKey()).map(GenerationModel::attribute).toList(), List.of()));
+                classById.put(item.id(), new ClassModel(item.id(), className, resourceName(className), snake(className), generatedId, autoGenerateTextId, item.attributes().stream().filter(attribute -> !attribute.primaryKey() && !"id".equals(fieldName(attribute.name()))).map(GenerationModel::attribute).toList(), List.of()));
             }
             Map<UUID, List<RelationField>> relationsBySource = new LinkedHashMap<>();
             for (UmlRelationResponse relation : details.relations()) {
