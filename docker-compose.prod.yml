@@ -24,6 +24,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:?define JWT_SECRET (>=32 caracteres)}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?define CORS_ALLOWED_ORIGINS}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openrouter/free}
+      OPENROUTER_FALLBACK_MODELS: ${OPENROUTER_FALLBACK_MODELS:-openrouter/free,inclusionai/ling-3.0-flash-vl:free}
     depends_on:
       postgres: { condition: service_healthy }
 
