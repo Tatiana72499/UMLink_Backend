@@ -50,9 +50,9 @@ Los checks reflejan únicamente elementos comprobados en el código actual.
 - [x] Importar y exportar el subconjunto PlantUML de clases: atributos, una PK por clase, operaciones, colores, relaciones, cardinalidades y clases de asociación.
 - [x] Persistir y exportar una única llave primaria por clase UML, sustituyendo la marca anterior al seleccionar otra.
 - [x] Validar restricciones estructurales por tipo de relación: cardinalidades, etiquetas, extremos y ciclos de herencia.
-- [ ] Definir comandos estructurados: crear clase, atributo, relación, eliminar y mover.
+- [x] Definir comandos estructurados de consulta, creación, edición, eliminación y movimiento para los elementos UML admitidos por el asistente.
 - [x] Integrar la vista previa externa de IA de imagen a PlantUML mediante OpenRouter, con contrato HTTP, autenticación local, límites y confirmación explícita antes de importar.
-- [ ] Validar y ejecutar comandos IA mediante services existentes.
+- [x] Validar y ejecutar comandos del intérprete local mediante los services existentes, con vista previa y confirmación para mutaciones.
 
 ## Fase 4 — Generación y móvil
 
